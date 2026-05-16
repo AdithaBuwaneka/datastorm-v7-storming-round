@@ -107,6 +107,17 @@ POI_TAGS = [
 # POI search radii (meters) — 4 rings for finer catchment granularity
 POI_RADII_M = [500, 1000, 2000, 5000]
 
+# --- Climate (Sri Lanka January monthly averages, by province) ---
+# Source: Department of Meteorology Sri Lanka — typical Jan conditions
+# (temperature in deg C; humidity in %).
+# Beverages are climate-sensitive: hotter / drier = higher soft-drink consumption.
+PROVINCE_CLIMATE_JAN = {
+    "Western":       {"temp_c": 27.5, "humidity_pct": 75},
+    "Central":       {"temp_c": 22.5, "humidity_pct": 78},  # cooler hills
+    "Southern":      {"temp_c": 27.0, "humidity_pct": 79},
+    "North-Western": {"temp_c": 27.5, "humidity_pct": 72},  # drier zone
+}
+
 # --- Modeling constants ---
 PEER_GROUP_MIN_N = 30          # minimum n for Q90 estimation; below this trigger fallback
 PEER_QUANTILE = 0.90            # primary ceiling quantile
