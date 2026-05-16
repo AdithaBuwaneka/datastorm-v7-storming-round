@@ -37,13 +37,26 @@ git clone https://github.com/AdithaBuwaneka/datastorm-v7-storming-round.git
 cd datastorm-v7-storming-round
 ```
 
-### 2. Install dependencies
+### 2. Create and activate a virtual environment
+
+```bash
+# Create
+python -m venv .venv
+
+# Activate (Windows PowerShell)
+.venv\Scripts\activate
+
+# Activate (bash / Linux / macOS)
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Add raw competition data
+### 4. Add raw competition data
 
 Drop the six raw files from the DataStorm 7.0 Kaggle dataset into `data/source/`:
 
