@@ -83,6 +83,48 @@ def build_outlet_month_panel(transactions: pd.DataFrame,
     return panel
 
 
+def compute_competitor_density(coords: pd.DataFrame, master: pd.DataFrame) -> pd.DataFrame:
+    """For each outlet, count number of OTHER outlets within 500m, 1km, 2km.
+    Uses BallTree haversine (radians). Captures local beverage-retail competition.
+    Also computes competitors of SAME type vs different type.
+
+    Returns DataFrame indexed by Outlet_ID with columns:
+      competitors_500m, competitors_1km, competitors_2km
+      same_type_competitors_500m, same_type_competitors_1km, same_type_competitors_2km
+    """
+    from sklearn.neighbors import BallTree
+    EARTH_R = 6_371_000.0
+
+    df = coords.merge(master[["Outlet_ID", "Outlet_Type"]], on="Outlet_ID", how="inner")
+    pos_rad = np.radians(df[["Latitude", "Longitude"]].to_numpy())
+    tree = BallTree(pos_rad, metric="haversine")
+
+    out = df[["Outlet_ID", "Outlet_Type"]].copy().reset_index(drop=True)
+    name_map = {500: "competitors_500m", 1000: "competitors_1km", 2000: "competitors_2km"}
+    for r_m, col in name_map.items():
+        r_rad = r_m / EARTH_R
+        counts = tree.query_radius(pos_rad, r=r_rad, count_only=True) - 1  # exclude self
+        out[col] = counts
+
+    # Same-type competitors: count nearby outlets that share Outlet_Type
+    # (a beverage-specific competition signal)
+    same_type_counts = {500: np.zeros(len(df), dtype=int),
+                         1000: np.zeros(len(df), dtype=int),
+                         2000: np.zeros(len(df), dtype=int)}
+    types = df["Outlet_Type"].to_numpy()
+    for r_m in (500, 1000, 2000):
+        r_rad = r_m / EARTH_R
+        neighbors = tree.query_radius(pos_rad, r=r_rad)
+        for i, neigh in enumerate(neighbors):
+            same_type_counts[r_m][i] = int((types[neigh] == types[i]).sum()) - 1  # exclude self
+
+    out["same_type_competitors_500m"] = same_type_counts[500]
+    out["same_type_competitors_1km"]  = same_type_counts[1000]
+    out["same_type_competitors_2km"]  = same_type_counts[2000]
+
+    return out.drop(columns=["Outlet_Type"])
+
+
 def attach_distributor(panel: pd.DataFrame, transactions: pd.DataFrame) -> pd.DataFrame:
     """Each outlet's primary distributor = most-frequent Distributor_ID across
     its transactions. Returns panel with Distributor_ID column attached.
@@ -290,7 +332,8 @@ def build_outlet_features(panel: pd.DataFrame,
                           master: pd.DataFrame,
                           coords: pd.DataFrame,
                           poi: pd.DataFrame,
-                          sku_mix: pd.DataFrame = None) -> pd.DataFrame:
+                          sku_mix: pd.DataFrame = None,
+                          competitors: pd.DataFrame = None) -> pd.DataFrame:
     """One row per outlet with ~50 engineered features."""
     p = panel.sort_values(["Outlet_ID", "Year", "Month"])
 
@@ -376,6 +419,20 @@ def build_outlet_features(panel: pd.DataFrame,
                     "sku_diversity", "top_sku_share"]:
             if col in feats.columns:
                 feats[col] = feats[col].fillna(0)
+
+    if competitors is not None:
+        feats = feats.merge(competitors, on="Outlet_ID", how="left")
+        for col in ["competitors_500m", "competitors_1km", "competitors_2km",
+                    "same_type_competitors_500m", "same_type_competitors_1km",
+                    "same_type_competitors_2km"]:
+            if col in feats.columns:
+                feats[col] = feats[col].fillna(0).astype(int)
+
+    # Climate features (per-province January averages — beverages climate-sensitive)
+    feats["climate_jan_temp_c"]    = feats["Province"].map(
+        lambda p: config.PROVINCE_CLIMATE_JAN.get(p, {}).get("temp_c", 27.0))
+    feats["climate_jan_humid_pct"] = feats["Province"].map(
+        lambda p: config.PROVINCE_CLIMATE_JAN.get(p, {}).get("humidity_pct", 75))
 
     print(f"  feature frame shape: {feats.shape}")
     return feats
@@ -470,9 +527,19 @@ def main() -> int:
     print(f"    avg_price_per_liter: {sku_mix['avg_price_per_liter'].mean():.2f} LKR")
     print(f"    sku_diversity (mean): {sku_mix['sku_diversity'].mean():.2f} of 10")
 
-    # 7. Per-outlet features
+    # 7. Competitor density per outlet (BallTree on outlet coords)
+    print("\n== Computing per-outlet competitor density ==")
+    competitors = compute_competitor_density(coords, master)
+    print(f"  Competitor density: {competitors.shape}")
+    print(f"  Avg competitors within 500m / 1km / 2km: "
+          f"{competitors.competitors_500m.mean():.1f} / "
+          f"{competitors.competitors_1km.mean():.1f} / "
+          f"{competitors.competitors_2km.mean():.1f}")
+
+    # 8. Per-outlet features
     print("\n== Engineering per-outlet features ==")
-    feats = build_outlet_features(panel, master, coords, poi, sku_mix=sku_mix)
+    feats = build_outlet_features(panel, master, coords, poi, sku_mix=sku_mix,
+                                   competitors=competitors)
     feats = assign_poi_density_tier(feats)
 
     feats_out = config.GOLD / "outlet_features.parquet"

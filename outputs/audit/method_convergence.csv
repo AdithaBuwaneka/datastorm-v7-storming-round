@@ -1,2 +1,2 @@
-rho_peer_vs_loglinear,rho_peer_vs_tobit,rho_loglinear_vs_tobit,threshold
-0.8624224791905164,0.8284630089118156,0.924755221676167,0.75
+rho_peer_vs_loglinear,rho_peer_vs_tobit,rho_loglinear_vs_tobit,rho_peer_vs_sfa,threshold
+0.8624224791905164,0.8284630089118156,0.924755221676167,0.8406522931753102,0.75
