@@ -48,6 +48,14 @@ def clean_outlet_master() -> pd.DataFrame:
                         config.VALID_OUTLET_SIZES,
                         dataset_name="outlet_master", check_name="outlet_size_value_set",
                         case_insensitive=True)
+    # Case-normalise Outlet_Size to canonical title-case (raw has 600 'small' lowercase rows)
+    size_map = {s.lower(): s for s in config.VALID_OUTLET_SIZES}
+    n_size_fixed = int((df["Outlet_Size"] != df["Outlet_Size"].astype(str).str.strip()
+                                                .str.lower().map(size_map)).sum())
+    df["Outlet_Size"] = (df["Outlet_Size"].astype(str).str.strip().str.lower()
+                             .map(size_map).fillna(df["Outlet_Size"]))
+    if n_size_fixed:
+        print(f"  Outlet_Size case-normalised: {n_size_fixed} rows changed to canonical form")
 
     # Cooler_Count integer coercion: quarantine non-integer rows
     coerced = pd.to_numeric(df["Cooler_Count"], errors="coerce")
