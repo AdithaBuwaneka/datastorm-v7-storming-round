@@ -414,7 +414,7 @@ def fit_sfa(panel: pd.DataFrame, feats: pd.DataFrame) -> pd.Series:
         return -np.sum(ll)
 
     print("  Fitting Stochastic Frontier (half-normal) MLE...")
-    res = minimize(neg_loglik, init, method="L-BFGS-B", options={"maxiter": 300})
+    res = minimize(neg_loglik, init, method="L-BFGS-B", options={"maxiter": 500})
     if not res.success:
         print(f"  WARN: SFA MLE convergence: {res.message}")
     print(f"  SFA converged. Final neg-log-lik: {res.fun:.1f}, lambda={np.exp(res.x[k+1]-res.x[k]):.3f}")
@@ -800,9 +800,12 @@ def main() -> int:
     # Step C (Jan 2026 projection)
     print("\n== Step C: Jan 2026 projection ==")
     # historical Jan-holiday-count mean from holiday data + dataset
+    # Use nunique(Date) for consistency with jan_2026_holidays["Date"].nunique()
+    # in project_jan_2026() — both count unique calendar dates, not row counts
+    # (rows duplicate Date across Holiday_Type: Public/Bank/Mercantile/Poya Day).
     hol = pd.read_parquet(config.SILVER_CLEAN / "holiday_clean.parquet")
     hol_jan = hol[hol["Date"].dt.month == 1]
-    historical_jan_mean = hol_jan.groupby(hol_jan["Date"].dt.year).size().mean()
+    historical_jan_mean = hol_jan.groupby(hol_jan["Date"].dt.year)["Date"].nunique().mean()
     projected = project_jan_2026(feats, base, season_extrap, season_mult, yoy,
                                   jan_2026_h, historical_jan_mean)
 

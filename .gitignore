@@ -40,7 +40,7 @@ data/silver/quarantine/*.parquet
 data/silver/quarantine/*.csv
 data/gold/*.parquet
 
-# Final outputs and audit artifacts ARE committed so judges can review
+# Final outputs and audit artifacts ARE committed so reviewers can inspect
 # without running the full pipeline (they are reproducible from src/).
 # Explicit allows for everything under outputs/:
 !outputs/
@@ -49,6 +49,11 @@ data/gold/*.parquet
 !outputs/audit/*.csv
 !outputs/audit/*.png
 !outputs/audit/*.md
+
+# Pipeline run logs (regenerated on every run, not deliverables)
+outputs/*.log
+outputs/*_log.txt
+outputs/_pipeline_run_log.txt
 
 # Auto-generated bronze manifest is small + portable — commit it as proof of
 # raw-file integrity (sha256 + row counts).
