@@ -28,6 +28,12 @@ report/          DataX_report.pdf (5 pages) + .docx source
 docs/            genai_log.md — GenAI transparency log
 ```
 
+## Prerequisites
+
+- Python 3.10 or newer
+- Git
+- pip (usually bundled with Python)
+
 ## Setup
 
 ### 1. Clone the repository
