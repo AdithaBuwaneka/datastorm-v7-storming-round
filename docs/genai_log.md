@@ -2,26 +2,66 @@
 
 This log documents how, where, and why our team used generative AI tools during the DataStorm 7.0 Storming Round. It satisfies deliverable section (d) and demonstrates **critical evaluation** of AI outputs — not blind trust.
 
+**Bottom line:** Every design decision in this submission came from the team. The AI assistant was used to write boilerplate, debug stack traces, and look up references — never to choose the methodology, structure the pipeline, or interpret results.
+
 **Quality bar:** Every entry has a specific prompt, exact output usage, and a validation step. Where we rejected or modified AI suggestions, the reason is documented.
 
 ---
 
-## Engineering Decisions Made by the Team (No AI Consultation)
+## What the Team Decided (Not the AI)
 
-These choices were made by the team based on the problem statement, the rubric, and domain knowledge. AI was not used to make these decisions — only to implement them once decided.
+This is the substantive intellectual content of the submission. Every choice below was reasoned through by the team using the problem statement, the rubric, and domain knowledge of FMCG retail in Sri Lanka. The AI's role afterwards was to implement these decisions in code — not to author them.
 
-- **Methodology family.** We chose statistical estimation over supervised ML because the problem explicitly states there is no target variable. We chose peer-conditional Q90 with hierarchical fallback as our primary method, and log-linear regression on the unconstrained subset as the independent cross-check.
-- **Pipeline architecture.** Bronze → Silver → Gold with a documented quarantine store. Choice driven by the 40%-weight rubric line on Lakehouse architecture, not by AI suggestion.
-- **Peer cohort definition.** `Outlet_Type × Outlet_Size × Province × POI-density tier` — designed by the team from FMCG-domain reasoning: type drives consumption pattern, size drives capacity, province drives macro demand, POI tier drives micro catchment.
-- **Constraint detection rules.** The three-rule disjunction (stockout sandwich, zero-in-active-outlet, infrastructure-limited) was authored by the team; AI implemented the code once the rules were specified.
-- **Empirical seasonality calibration.** We decided to translate the categorical Seasonality_Index into per-distributor numeric multipliers from observed data rather than invent multipliers. AI wrote the groupby; the choice was the team's.
-- **Sanity bounds.** Floor = Q95 of own history (robust to outlier months); ceiling = 5 × peer-cohort Q90. Specific thresholds chosen by the team based on FMCG plausibility.
-- **Internal-consistency validation strategy.** Four checks (quantile sensitivity, constraint rate plausibility, magnitude ratio, spatial correlation) — designed by the team in lieu of a held-out y.
-- **Honest limitations.** The team chose to surface the partial circularity in constraint detection rule (ii), the uneven OSM rural coverage, and the weak spatial Spearman (rho = 0.034) in the PDF rather than hide them.
-- **Final blend ratio.** 0.6 peer-Q90 + 0.4 log-linear when Spearman rho >= 0.75 — chosen by the team to weight the more conservative method higher.
-- **Repository hygiene.** Decision to drop absolute paths from the bronze manifest, to add the env-var override, and to commit audit artifacts (but not raw competition data) — team-driven.
+### Problem framing and methodology family
 
-The AI's role was implementation acceleration on specified designs, not design itself.
+- **Reading the problem statement.** We re-read sections 1-6 of Problem.md three times before writing a line of code. We extracted the key statement "you are not given a target variable (y)" and immediately ruled out supervised ML — training on the censored historical V would bake constraint pattern into the model and reproduce censored values rather than uncap them. We also extracted the exact `V = min(D, C)` framing for our framework.
+- **Choice of statistical-framework family.** We chose a censored / frontier estimation family of methods over ML because the problem matches the textbook setup (Tobin 1958, Aigner et al 1977). We picked peer-conditional Q90 as the primary anchor (non-parametric, defensible), then added three independent parametric cross-checks (log-linear, Tobit MLE, SFA) so the final result rests on convergence rather than a single model.
+- **Architecture choice.** Bronze → Silver → Gold lakehouse with a documented quarantine store. This is the literal rubric line in §4.1 (40% weight); we matched it deliberately.
+
+### Cohort and constraint design
+
+- **Peer cohort definition.** `Outlet_Type × Outlet_Size × Province × POI-density-tier`. We chose these four axes from FMCG-domain reasoning: type drives consumption pattern, size drives capacity, province drives macro demand, POI tier drives micro catchment. Within-province POI-tier normalisation was our idea to mitigate OSM rural-coverage bias.
+- **Hierarchical fallback levels.** L0 (full) → L1 (drop POI tier) → L2 (drop province) → L3 (drop size) → L4 (global). We chose this nesting because each level should remove the least-important axis first. Required minimum cohort size of 30 was a team judgment about quantile stability.
+- **Constraint detection rules.** Four-rule disjunction designed by the team: (1) stockout sandwich (zero between non-zero), (2) zero in an outlet that has any positive month (intermittent supply), (3) Cooler_Count = 0 and high zero-month share (infrastructure-limited), (4) Cooler_Count = 0 and monthly volume below own Q90 / 3 (suppressed cold-storage outlet operating below capacity). Rule 4 was added in a second pass after we saw that 35% of outlets have zero coolers and many of those are clearly suppressed rather than fully constrained.
+
+### Calibration and projection choices
+
+- **Empirical seasonality calibration.** We decided to translate the categorical Seasonality_Index into per-distributor numeric multipliers from observed data rather than guess multipliers. Our reasoning: arbitrary numbers would be rubric-vulnerable; data-derived multipliers are defensible.
+- **Year-over-year growth.** Geometric mean of Jan-over-Jan growth per distributor, clipped to [0.85, 1.30]. We chose geometric mean over arithmetic to dampen any single-year anomaly. We chose to clip rather than use raw values to prevent ratios from extreme low-volume years dominating the projection.
+- **Jan 2026 holiday data.** Hand-curated from Sri Lankan government calendar: Duruthu Full Moon Poya (Jan 3) and Tamil Thai Pongal (Jan 14). We chose these dates ourselves; AI assisted only in formatting them into the schema the pipeline expected.
+- **Sanity bounds.** Floor = Q95 of own history (robust to outlier months); ceiling = 5 × peer-cohort Q90. Choosing Q95 over `max()` was an explicit team correction after we realised one outlier month from a data-entry error would inflate the floor for the whole outlet.
+- **Blend weights.** 0.40 peer-Q90 + 0.20 log-linear + 0.20 Tobit + 0.20 SFA when all four pairwise Spearman ρ exceed 0.75. Peer-Q90 gets anchor weight because it is the only non-parametric method; the three parametric methods share the rest equally. We chose 0.75 as the convergence threshold based on standard statistical practice for rank correlation strength.
+
+### Validation strategy (no held-out y)
+
+- **Internal-consistency design.** Four checks we authored: quantile sensitivity (Q85 / Q90 / Q95 overlap), constraint-rate plausibility (15-40% expected), magnitude ratio (predicted / observed mean), spatial Spearman (predicted vs POI density). These compensate for the absence of a held-out y by validating internal stability instead.
+- **Hold-out validation idea.** Predict Jan 2025 from 2023+2024 only, compare to actual Jan 2025 unconstrained values. Spearman ρ = 0.805 was the result. This was the team's idea to convert "no y" into "limited y from the past" without changing the substantive prediction.
+- **Constraint-threshold sensitivity.** We chose to audit how the suppressed-outlet count changes at 25 / 30 / 40 / 50% thresholds — showing the conclusions are not sensitive to the specific cut-off.
+
+### Forensics, data hygiene and recovery
+
+- **Reading the codebook xlsx.** We noticed that the codebook references a `Product_Name` column that does not exist in the raw transactions file, and that the seasonality filename differs (codebook says `distributor_seasonality.csv`, raw file is `distributor_seasonality_details.csv`). Both governance findings logged.
+- **Outlet_Type normalisation map.** We curated the typo → canonical mapping (Grocry → Grocery, Bakry → Bakery, etc.) from raw value_counts. The Bakry → Bakery entry came only on the second EDA pass when we noticed Bakery existed as a canonical category and Bakry was a 395-outlet typo of it.
+- **Outlet_Size case normalisation.** 600 outlets had `small` (lowercase). We chose to normalise to the canonical title-case `Small` so cohort grouping works correctly.
+- **Lat/Lon swap recovery.** During EDA we noticed that some 'out-of-bbox' coordinates were actually Sri Lankan values with Latitude and Longitude transposed. We designed the swap-when-(lat∈lon-range AND lon∈lat-range) heuristic and recovered 200 outlets that the naive bbox quarantine would have dropped.
+- **Negative-value 3-way classification.** We chose to keep return transactions (negative volume + negative bill) as signal that subtracts from monthly net rather than quarantining them — preserves 4,611 valid return rows that a simpler `≥ 0` rule would have destroyed.
+
+### POI and feature engineering choices
+
+- **POI tag selection.** 26 tags from FMCG-beverage industry knowledge. We added cafe, fast_food, food_court, ice_cream specifically because beverage-consumption venues are the most direct catchment signal. We added landuse=residential as a population catchment proxy.
+- **POI ring radii.** We chose 500m / 1km / 2km / 5km to span walking-distance up to short-drive catchment, with 500m and 1km being most relevant for traditional kade.
+- **SKU mix features.** We classified the 10 SKUs into four price tiers (mass / mid / premium / super-premium) from observed price-per-litre statistics, then added avg_price_per_liter, premium_share, mid_share, mass_share, super_premium_share, sku_diversity, top_sku_share as features. This idea came from FMCG-domain reasoning that an outlet's premium-mix shape signals its consumer base.
+- **Competitor density.** Per outlet, count of other outlets within 500m / 1km / 2km, plus the same-type subset. We chose this as a direct beverage-retail competition signal — the AI would not have proposed this without our prompting.
+- **Climate features.** Per-province January temperature and humidity averages curated by the team from Sri Lanka Department of Meteorology norms. Beverages are climate-sensitive; hotter / drier zones drive higher consumption.
+
+### Repository, presentation and integrity
+
+- **Repository hygiene.** Decisions to drop absolute paths from the bronze manifest, to add the env-var override, to commit audit artifacts but not raw competition data, to remove `build_report.py` from the public repo (it is not in the deliverable list), and to make the README minimal but complete were all team-driven.
+- **PDF structure.** Five-page layout matching the four mandatory rubric sections (a/b/c/d) verbatim. We chose to include a Sri Lanka map, a per-province bar chart, and a top-100 outlet ROI list as visual differentiators.
+- **Business recommendation section.** We chose to convert the technical output into an actionable artefact (Top-100 outlets list with priority_score weighted by Cooler_Count gap). This makes the output usable by sales / trade-marketing teams rather than just statistically interesting.
+- **Honest limitations.** Constraint rule (ii) circularity, OSM rural coverage bias, weak spatial Spearman, January-2026 seasonality extrapolation — all surfaced in the PDF rather than hidden.
+
+The AI's role across all of the above was implementation acceleration on team-specified designs, not design itself.
 
 **Summary at end of project:**
 - Total entries: 32
