@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.ipynb_checkpoints/
+
+# Virtual envs
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MS Office lock files
+~$*
+
+# Large/derived data — keep folder structure via .gitkeep but ignore content
+data/source/*
+!data/source/.gitkeep
+!data/source/README.md
+data/bronze/*.csv
+data/bronze/*.xlsx
+data/bronze/*.json
+# But DO commit the team-curated Jan 2026 holiday lookup
+# (sourced from Sri Lanka government calendar; required input to gold_features)
+!data/bronze/jan_2026_holidays.csv
+!data/bronze/_manifest.json
+data/bronze/poi_raw/*.json
+data/bronze/poi_raw/*.parquet
+data/silver/clean/*.parquet
+data/silver/quarantine/*.parquet
+data/silver/quarantine/*.csv
+data/gold/*.parquet
+
+# Final outputs and audit artifacts ARE committed so judges can review
+# without running the full pipeline (they are reproducible from src/).
+# Explicit allows for everything under outputs/:
+!outputs/
+!outputs/audit/
+!outputs/*.csv
+!outputs/audit/*.csv
+!outputs/audit/*.png
+!outputs/audit/*.md
+
+# Auto-generated bronze manifest is small + portable — commit it as proof of
+# raw-file integrity (sha256 + row counts).
+!data/bronze/_manifest.json
+
+# Report deliverables (.pdf + .docx) ARE committed
+!report/
+report/figures/*.png

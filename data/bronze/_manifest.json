@@ -1,0 +1,98 @@
+{
+  "team": "DataX",
+  "files": [
+    {
+      "filename": "transactions_history_final.csv",
+      "source_basename": "transactions_history_final.csv",
+      "size_bytes": 169157260,
+      "sha256": "306d203a6af43202a32b2cc90369628a600b58e9f4db5a30a75d161f54c8d18b",
+      "rows": 2376389,
+      "columns_or_sheets": [
+        "Outlet_ID",
+        "Year",
+        "Month",
+        "Distributor_ID",
+        "SKU_ID",
+        "Volume_Liters",
+        "Total_Bill_Value"
+      ],
+      "status": "ok"
+    },
+    {
+      "filename": "outlet_master.csv",
+      "source_basename": "outlet_master.csv",
+      "size_bytes": 507648,
+      "sha256": "ad54086f817043ee6611a68a439038f948baad4222d5f0694125e41e00e3d1c9",
+      "rows": 20000,
+      "columns_or_sheets": [
+        "Outlet_ID",
+        "Outlet_Size",
+        "Cooler_Count",
+        "Outlet_Type"
+      ],
+      "status": "ok"
+    },
+    {
+      "filename": "outlet_coordinates.csv",
+      "source_basename": "outlet_coordinates.csv",
+      "size_bytes": 575148,
+      "sha256": "14b88fa8766a90cab9d0037820ea0d9afffc67ae4ca585697dfbeac478256309",
+      "rows": 20000,
+      "columns_or_sheets": [
+        "Outlet_ID",
+        "Latitude",
+        "Longitude"
+      ],
+      "status": "ok"
+    },
+    {
+      "filename": "distributor_seasonality_details.csv",
+      "source_basename": "distributor_seasonality_details.csv",
+      "size_bytes": 9767,
+      "sha256": "25a135631b9f372f2d1a23c9e40f1009949ca648961ef33afbb03f5c68c54e44",
+      "rows": 360,
+      "columns_or_sheets": [
+        "Distributor_ID",
+        "Year",
+        "Month",
+        "Seasonality_Index"
+      ],
+      "status": "ok"
+    },
+    {
+      "filename": "holiday_list.csv",
+      "source_basename": "holiday_list.csv",
+      "size_bytes": 20180,
+      "sha256": "52134ac6167c98529ec33bd50786ebf753fc149ffaa2849c439c7c6a0f5e3919",
+      "rows": 349,
+      "columns_or_sheets": [
+        "Date",
+        "Holiday_Name",
+        "Holiday_Type"
+      ],
+      "status": "ok"
+    },
+    {
+      "filename": "dataset_description.xlsx",
+      "source_basename": "1. dataset_description.xlsx",
+      "size_bytes": 10794,
+      "sha256": "c84adea0f62116b77c6caa7bf2ef605d26ccfca2d3a1d6c0cb689bf9b634f5c2",
+      "rows": null,
+      "columns_or_sheets": [
+        "Sheet1"
+      ],
+      "status": "ok"
+    }
+  ],
+  "outlet_id_cross_file_findings": {
+    "master_count": 20000,
+    "coords_count": 20000,
+    "transactions_unique_outlets": 20000,
+    "in_master_not_in_coords": 0,
+    "in_coords_not_in_master": 0,
+    "transactions_orphans (txn outlet not in master)": 0,
+    "ghost_outlets_master_no_txns": 0,
+    "examples_orphans": [],
+    "examples_ghosts": []
+  }
+}
