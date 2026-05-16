@@ -56,18 +56,34 @@ def detect_constraints(panel: pd.DataFrame,
          (infrastructure-limited outlet's lean months)
     """
     p = panel.merge(
-        feats[["Outlet_ID", "Cooler_Count", "zero_months_share", "active_months"]],
+        feats[["Outlet_ID", "Cooler_Count", "zero_months_share", "active_months",
+               "monthly_volume_mean", "monthly_volume_q90"]],
         on="Outlet_ID", how="left",
     )
+    # Cohort baseline for rule 4
+    p = p.merge(
+        feats[["Outlet_ID", "Outlet_Type", "Outlet_Size", "Province", "poi_tier"]],
+        on="Outlet_ID", how="left",
+    )
+
     rule1 = p["stockout_flag"] == 1
     rule2 = (p["monthly_volume"] == 0) & (p["active_months"] > 0)
     rule3 = (p["Cooler_Count"] == 0) & (p["zero_months_share"] > 0.30) & (p["monthly_volume"] == 0)
-    p["constrained"] = (rule1 | rule2 | rule3).astype(int)
+    # Rule 4 (NEW): low-cooler outlet operating below its own historical Q90 / 3
+    # Captures Cooler_Count=0 outlets that ARE selling but at suppressed level
+    rule4 = (p["Cooler_Count"] == 0) & (p["monthly_volume"] > 0) & \
+            (p["monthly_volume"] < p["monthly_volume_q90"] / 3.0)
+
+    p["constrained"] = (rule1 | rule2 | rule3 | rule4).astype(int)
 
     n_total = len(p)
     n_constr = int(p["constrained"].sum())
     print(f"  Constraint detection: {n_constr:,} / {n_total:,} outlet-months constrained "
           f"({n_constr/n_total*100:.2f}%)")
+    print(f"    Rule 1 (stockout sandwich): {int(rule1.sum()):,}")
+    print(f"    Rule 2 (zero in active):    {int(rule2.sum()):,}")
+    print(f"    Rule 3 (no cooler + zero):  {int(rule3.sum()):,}")
+    print(f"    Rule 4 (no cooler + low):   {int(rule4.sum()):,}")
 
     # outlet-level summary
     constr_share = p.groupby("Outlet_ID")["constrained"].mean().rename("constrained_share")
@@ -99,10 +115,17 @@ def compute_peer_q90(panel: pd.DataFrame,
     min_n = min_n or config.PEER_GROUP_MIN_N
 
     # join cohort identifiers into panel; use only unconstrained rows for Q90
-    p_unc = panel[panel["constrained"] == 0].merge(
-        feats[["Outlet_ID", "Outlet_Type", "Outlet_Size", "Province", "poi_tier"]],
-        on="Outlet_ID", how="left",
-    )
+    # (panel may already have these columns from detect_constraints — only merge missing)
+    p = panel[panel["constrained"] == 0].copy()
+    need_cols = [c for c in ["Outlet_Type", "Outlet_Size", "Province", "poi_tier"]
+                 if c not in p.columns]
+    if need_cols:
+        p_unc = p.merge(
+            feats[["Outlet_ID"] + need_cols],
+            on="Outlet_ID", how="left",
+        )
+    else:
+        p_unc = p
 
     # Pre-compute Q90 at each level
     level_q90 = {}
@@ -244,6 +267,163 @@ def apply_sanity_bounds(predictions: pd.Series,
 
 
 # ---------------------------------------------------------------------------
+# Hold-Out Validation — predict Jan 2025 from 2023+2024, compare to actuals
+# ---------------------------------------------------------------------------
+
+def holdout_validation_jan_2025(panel: pd.DataFrame, feats: pd.DataFrame) -> dict:
+    """Pseudo-validation: use only 2023+2024 history to compute peer-Q90 and predict
+    Jan 2025 monthly volume. Compare to actual Jan 2025 volume for unconstrained
+    outlets (where observed = demand is a fair benchmark).
+
+    Returns metrics dict.
+    """
+    train = panel[panel["Year"].isin([2023, 2024])].copy()
+    holdout = panel[(panel["Year"] == 2025) & (panel["Month"] == 1)].copy()
+
+    # Compute peer Q90 using only training period
+    t_unc = train[train["constrained"] == 0].copy()
+    need = [c for c in ["Outlet_Type", "Outlet_Size", "Province", "poi_tier"]
+            if c not in t_unc.columns]
+    train_unc = t_unc.merge(feats[["Outlet_ID"] + need], on="Outlet_ID", how="left") \
+                  if need else t_unc
+    peer_q90_train = (train_unc
+        .groupby(["Outlet_Type", "Outlet_Size", "Province", "poi_tier"])
+        ["monthly_volume"].quantile(config.PEER_QUANTILE)
+        .reset_index().rename(columns={"monthly_volume": "peer_q90_train"}))
+
+    # Own Q90 from training period
+    own_q90_train = (train_unc.groupby("Outlet_ID")["monthly_volume"]
+                     .quantile(config.PEER_QUANTILE)
+                     .rename("own_q90_train").reset_index())
+
+    # Build outlet-level prediction
+    outlet_pred = feats[["Outlet_ID", "Outlet_Type", "Outlet_Size",
+                          "Province", "poi_tier"]].merge(
+        peer_q90_train, on=["Outlet_Type", "Outlet_Size", "Province", "poi_tier"], how="left"
+    ).merge(own_q90_train, on="Outlet_ID", how="left")
+    outlet_pred["pred_jan_2025"] = outlet_pred[["own_q90_train", "peer_q90_train"]].max(axis=1)
+
+    # Compare to actual Jan 2025 monthly_volume (only unconstrained Jan 2025 obs)
+    actual = holdout[holdout["constrained"] == 0][["Outlet_ID", "monthly_volume"]].rename(
+        columns={"monthly_volume": "actual_jan_2025"})
+
+    eval_df = outlet_pred.merge(actual, on="Outlet_ID", how="inner")
+    eval_df = eval_df.dropna(subset=["pred_jan_2025", "actual_jan_2025"])
+    eval_df = eval_df[eval_df["actual_jan_2025"] > 0]
+
+    if len(eval_df) == 0:
+        return {"n": 0}
+
+    err = eval_df["pred_jan_2025"] - eval_df["actual_jan_2025"]
+    pct = err / eval_df["actual_jan_2025"]
+    metrics = {
+        "n_outlets": len(eval_df),
+        "MAE":  float(err.abs().mean()),
+        "RMSE": float(np.sqrt((err**2).mean())),
+        "MAPE_%": float(pct.abs().mean() * 100),
+        "median_pct_err": float(pct.median() * 100),
+        "P(pred > actual)": float((eval_df["pred_jan_2025"] > eval_df["actual_jan_2025"]).mean()),
+        "rho_spearman": float(spearmanr(eval_df["pred_jan_2025"], eval_df["actual_jan_2025"]).statistic),
+    }
+
+    # Persist audit
+    metrics_df = pd.DataFrame([metrics])
+    metrics_df.to_csv(config.AUDIT / "holdout_validation_jan2025.csv", index=False)
+    print(f"  Hold-out validation Jan 2025:")
+    for k, v in metrics.items():
+        if isinstance(v, float):
+            print(f"    {k}: {v:.3f}")
+        else:
+            print(f"    {k}: {v}")
+    return metrics
+
+
+# ---------------------------------------------------------------------------
+# Step E — Tobit Type I MLE censored regression (state-of-the-art for V = min(D,C))
+# Reference: Tobin (1958), Amemiya (1984), Greene (2008) Econometric Analysis ch.19
+# ---------------------------------------------------------------------------
+
+def fit_tobit_mle(panel: pd.DataFrame, feats: pd.DataFrame) -> pd.Series:
+    """Fit Tobit Type I via maximum likelihood: log(1+V) ~ N(Xβ, σ²) where
+    unconstrained months are uncensored and constrained months are right-censored
+    at log(1+observed_value) (i.e., we know true log_demand >= log(1+V_observed)).
+
+    Returns per-outlet predicted latent log-demand exponentiated back to litres.
+    """
+    from scipy.optimize import minimize
+    from scipy.stats import norm
+
+    p = panel.copy()
+    need = [c for c in ["Outlet_Type", "Outlet_Size", "Province", "poi_tier",
+                        "Latitude", "Longitude", "poi_total_2km",
+                        "premium_share", "mass_share", "avg_price_per_liter",
+                        "sku_diversity"]
+            if c not in p.columns]
+    if need:
+        p = p.merge(feats[["Outlet_ID"] + [c for c in need if c in feats.columns]],
+                    on="Outlet_ID", how="left")
+
+    # y = log(1 + monthly_volume), is_censored = constrained
+    y = np.log1p(p["monthly_volume"].clip(lower=0).values)
+    is_cen = p["constrained"].values.astype(bool)
+
+    # Design matrix
+    cat_cols = [c for c in ["Outlet_Type", "Outlet_Size", "Province"] if c in p.columns]
+    num_cols = [c for c in ["Cooler_Count", "poi_tier", "poi_total_2km",
+                            "Latitude", "Longitude",
+                            "premium_share", "mass_share", "avg_price_per_liter",
+                            "sku_diversity"] if c in p.columns]
+    X_cat = pd.get_dummies(p[cat_cols], drop_first=True).astype(float)
+    X_num = p[num_cols].astype(float).fillna(0)
+    X = pd.concat([X_cat, X_num], axis=1)
+    X.insert(0, "const", 1.0)
+    X_arr = X.values
+    k = X_arr.shape[1]
+
+    # OLS warm-start on uncensored only
+    ols_beta, *_ = np.linalg.lstsq(X_arr[~is_cen], y[~is_cen], rcond=None)
+    resid = y[~is_cen] - X_arr[~is_cen] @ ols_beta
+    ols_sigma = float(resid.std()) or 1.0
+    init = np.concatenate([ols_beta, [np.log(ols_sigma)]])
+
+    def neg_loglik(params):
+        b = params[:k]
+        log_s = params[k]
+        s = np.exp(log_s)
+        mu = X_arr @ b
+        z = (y - mu) / s
+        # uncensored: log normal pdf
+        ll_unc = -0.5 * np.log(2 * np.pi) - log_s - 0.5 * z * z
+        # right-censored: log SF (true demand >= observed; observed is the bound)
+        ll_cen = norm.logsf(z)
+        ll = np.where(is_cen, ll_cen, ll_unc)
+        return -np.sum(ll)
+
+    print("  Fitting Tobit Type I MLE (this may take ~30-60s)...")
+    res = minimize(neg_loglik, init, method="L-BFGS-B",
+                   options={"maxiter": 200, "disp": False})
+    if not res.success:
+        print(f"  WARN: Tobit MLE convergence: {res.message}")
+    print(f"  Tobit converged. Final neg-log-lik: {res.fun:.1f}")
+    beta_hat = res.x[:k]
+
+    # Predict latent log_demand per outlet: average X across that outlet's months
+    feat_means = (p.groupby("Outlet_ID")[num_cols].mean()
+                    .reindex(feats["Outlet_ID"])
+                    .fillna(p[num_cols].mean()))
+    cat_per_outlet = feats.set_index("Outlet_ID")[cat_cols]
+    Xo_cat = pd.get_dummies(cat_per_outlet, drop_first=True).astype(float) \
+                .reindex(columns=X_cat.columns, fill_value=0.0)
+    Xo = pd.concat([Xo_cat, feat_means], axis=1)
+    Xo.insert(0, "const", 1.0)
+    Xo = Xo.reindex(columns=X.columns, fill_value=0.0)
+
+    log_pred = Xo.values @ beta_hat
+    pred = np.expm1(log_pred).clip(min=0.0)
+    return pd.Series(pred, index=Xo.index, name="tobit_pred")
+
+
+# ---------------------------------------------------------------------------
 # Step E — Cross-check: log-linear regression on unconstrained subset
 # ---------------------------------------------------------------------------
 
@@ -254,11 +434,12 @@ def cross_check_loglinear(panel: pd.DataFrame,
     of latent demand, complementing the peer-Q90 conditional-quantile method.
     """
     # NB: panel already has Cooler_Count merged in Step A; pull the rest from feats only
-    p_unc = panel[panel["constrained"] == 0].merge(
-        feats[["Outlet_ID", "Outlet_Type", "Outlet_Size", "Province",
-               "poi_tier", "Latitude", "Longitude", "poi_total_2km"]],
-        on="Outlet_ID", how="left",
-    )
+    # panel may already have Outlet_Type/Size/Province/poi_tier from detect_constraints
+    p = panel[panel["constrained"] == 0].copy()
+    need = [c for c in ["Outlet_Type", "Outlet_Size", "Province", "poi_tier",
+                        "Latitude", "Longitude", "poi_total_2km"]
+            if c not in p.columns]
+    p_unc = p.merge(feats[["Outlet_ID"] + need], on="Outlet_ID", how="left") if need else p
 
     # log transform
     y = np.log1p(p_unc["monthly_volume"].clip(lower=0).values)
@@ -310,10 +491,10 @@ def validate_quantile_sensitivity(panel: pd.DataFrame,
     """Repeat peer-Q90 with q=0.85 and q=0.95; plot the three prediction
     distributions. If the curves are close, the method is robust."""
     results = {}
-    p_unc = panel[panel["constrained"] == 0].merge(
-        feats[["Outlet_ID", "Outlet_Type", "Outlet_Size", "Province", "poi_tier"]],
-        on="Outlet_ID", how="left",
-    )
+    p = panel[panel["constrained"] == 0].copy()
+    need = [c for c in ["Outlet_Type", "Outlet_Size", "Province", "poi_tier"]
+            if c not in p.columns]
+    p_unc = p.merge(feats[["Outlet_ID"] + need], on="Outlet_ID", how="left") if need else p
     for q in (0.85, 0.90, 0.95):
         peer = p_unc.groupby(["Outlet_Type", "Outlet_Size",
                               "Province", "poi_tier"])["monthly_volume"].quantile(q)
@@ -439,24 +620,54 @@ def main() -> int:
         peer_q90=feats.set_index("Outlet_ID")["peer_q90"],
     )
 
-    # Step E (cross-check + blend)
-    print("\n== Step E: Log-linear cross-check ==")
+    # Step E (cross-check + blend with two independent methods)
+    print("\n== Step E.1: Log-linear cross-check (complete-case proxy) ==")
     loglin_pred = cross_check_loglinear(panel, feats)
-    # Apply same Jan 2026 multipliers to loglin_pred for apples-to-apples
     loglin_proj = project_jan_2026(feats, loglin_pred, season_extrap, season_mult, yoy,
                                     jan_2026_h, historical_jan_mean)
     loglin_proj = loglin_proj.reindex(bounded.index)
+    rho_loglin, _ = spearmanr(bounded.values, loglin_proj.values, nan_policy="omit")
+    print(f"  Spearman rho (peer-Q90 vs log-linear): {rho_loglin:.3f}")
 
-    rho, _ = spearmanr(bounded.values, loglin_proj.values, nan_policy="omit")
-    print(f"  Spearman rho (peer-Q90 vs log-linear): {rho:.3f}")
-    if rho >= config.TOBIT_CONVERGENCE_RHO:
+    print("\n== Step E.2: Tobit Type I MLE (full likelihood censored regression) ==")
+    try:
+        tobit_pred = fit_tobit_mle(panel, feats)
+        tobit_proj = project_jan_2026(feats, tobit_pred, season_extrap, season_mult, yoy,
+                                       jan_2026_h, historical_jan_mean)
+        tobit_proj = tobit_proj.reindex(bounded.index)
+        rho_tobit, _ = spearmanr(bounded.values, tobit_proj.values, nan_policy="omit")
+        rho_tobit_loglin, _ = spearmanr(loglin_proj.values, tobit_proj.values,
+                                          nan_policy="omit")
+        print(f"  Spearman rho (peer-Q90 vs Tobit):   {rho_tobit:.3f}")
+        print(f"  Spearman rho (log-linear vs Tobit): {rho_tobit_loglin:.3f}")
+        # Save audit row
+        pd.DataFrame([{
+            "rho_peer_vs_loglinear": rho_loglin,
+            "rho_peer_vs_tobit": rho_tobit,
+            "rho_loglinear_vs_tobit": rho_tobit_loglin,
+            "threshold": config.TOBIT_CONVERGENCE_RHO,
+        }]).to_csv(config.AUDIT / "method_convergence.csv", index=False)
+        tobit_ok = True
+    except Exception as e:
+        print(f"  WARN: Tobit MLE failed: {e}")
+        tobit_proj = None
+        rho_tobit = float("nan")
+        tobit_ok = False
+
+    # Final blend: 3-way ensemble if all methods agree, else 2-way, else peer alone
+    print("\n== Step E.3: Final blend ==")
+    if tobit_ok and rho_loglin >= config.TOBIT_CONVERGENCE_RHO and rho_tobit >= config.TOBIT_CONVERGENCE_RHO:
+        # 3-way ensemble: 0.5 peer + 0.25 log-linear + 0.25 tobit
+        final = 0.5 * bounded + 0.25 * loglin_proj + 0.25 * tobit_proj
+        print(f"  -> All 3 methods converge; 3-way ensemble 0.50/0.25/0.25")
+    elif rho_loglin >= config.TOBIT_CONVERGENCE_RHO:
         w_peer = config.TOBIT_BLEND_W_PEER
         w_xchk = config.TOBIT_BLEND_W_TOBIT
         final = w_peer * bounded + w_xchk * loglin_proj
-        print(f"  -> methods converge; blending {w_peer:.1f}/{w_xchk:.1f}")
+        print(f"  -> Peer + log-linear converge; blending {w_peer:.1f}/{w_xchk:.1f}")
     else:
         final = bounded
-        print(f"  -> methods diverge (rho < {config.TOBIT_CONVERGENCE_RHO}); using peer-Q90 only")
+        print(f"  -> Methods diverge; peer-Q90 only")
 
     # ensure positive
     final = final.clip(lower=0.1)
@@ -467,6 +678,13 @@ def main() -> int:
     validate_constraint_rate(feats, config.AUDIT / "constraint_breakdown.csv")
     validate_magnitude(final, feats, config.AUDIT / "magnitude_ratio.png")
     validate_spatial(final, feats, config.AUDIT / "spatial_consistency.csv")
+
+    # Step G: Hold-out validation (predict Jan 2025 from 2023+2024 history)
+    print("\n== Step G: Hold-out validation (Jan 2025 predict-from-past) ==")
+    try:
+        _ = holdout_validation_jan_2025(panel, feats)
+    except Exception as e:
+        print(f"  WARN: hold-out validation failed: {e}")
 
     # Write predictions CSV (deliverable #1)
     out = pd.DataFrame({

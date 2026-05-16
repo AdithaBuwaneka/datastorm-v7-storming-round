@@ -59,28 +59,53 @@ VALID_HOLIDAY_TYPES = {"Public", "Bank", "Poya Day", "Mercantile"}
 # Outlet sizes (per codebook)
 VALID_OUTLET_SIZES = {"Small", "Medium", "Large", "Extra Large"}
 
-# --- POI tags for Overpass (15 tags, FMCG-beverage relevant) ---
+# --- POI tags for Overpass (26 tags, FMCG-beverage industry-relevant) ---
 POI_TAGS = [
+    # Direct beverage-consumption venues (industry-critical)
+    ("amenity", "cafe"),            # coffee/tea shops
+    ("amenity", "fast_food"),       # KFC, McDonald's, quick eats
+    ("amenity", "restaurant"),      # full-service
+    ("amenity", "food_court"),      # mall food courts
+    ("amenity", "ice_cream"),       # beverage co-consumption
+
+    # Education footfall
     ("amenity", "school"),
     ("amenity", "university"),
+    ("amenity", "college"),
+    ("amenity", "kindergarten"),
+
+    # Healthcare footfall
     ("amenity", "hospital"),
+    ("amenity", "clinic"),
     ("amenity", "pharmacy"),
-    ("amenity", "restaurant"),
-    ("amenity", "marketplace"),
-    ("amenity", "place_of_worship"),
-    ("amenity", "bank"),
-    ("amenity", "fuel"),
+
+    # Transit / commerce hubs
     ("highway", "bus_stop"),
+    ("amenity", "marketplace"),
+    ("amenity", "fuel"),
+    ("amenity", "bank"),
+
+    # Retail competition / co-located
     ("shop",    "supermarket"),
     ("shop",    "convenience"),
     ("shop",    "alcohol"),
+
+    # Community gatherings (event-driven beverage demand)
+    ("amenity", "place_of_worship"),
+    ("leisure", "park"),
+    ("leisure", "fitness_centre"),  # sports/energy drink demand
+    ("leisure", "stadium"),         # event peak demand
+
+    # Tourism (urban + tourist-area context)
     ("tourism", "hotel"),
     ("tourism", "attraction"),
-    ("leisure", "park"),
+
+    # Population proxy
+    ("landuse", "residential"),     # catchment population indicator
 ]
 
-# POI search radii (meters)
-POI_RADII_M = [1000, 2000, 5000]
+# POI search radii (meters) — 4 rings for finer catchment granularity
+POI_RADII_M = [500, 1000, 2000, 5000]
 
 # --- Modeling constants ---
 PEER_GROUP_MIN_N = 30          # minimum n for Q90 estimation; below this trigger fallback

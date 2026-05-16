@@ -25,15 +25,22 @@ FORENSICS_CSV = config.AUDIT / "forensics_findings.csv"
 # Single-source typo-normalisation map for Outlet_Type. Kept here so any caller
 # applying it sees the same mapping; logged for the PDF.
 OUTLET_TYPE_NORMALISATION = {
-    "grocry":     "Grocery",
-    "grocery":    "Grocery",
-    "eatry":      "Eatery",
-    "eatery":     "Eatery",
-    "pharmcy":    "Pharmacy",
-    "pharmacy":   "Pharmacy",
-    "hotel":      "Hotel",
-    "restraunt":  "Restaurant",
-    "restaurant": "Restaurant",
+    # Canonical types observed in the raw data (verified via EDA):
+    # Hotel, Grocery, Pharmacy, Eatery, Bakery, Kiosk, SMMT (FMCG retail-trade code)
+    "grocery":     "Grocery",
+    "grocry":      "Grocery",       # typo (~390 outlets)
+    "eatery":      "Eatery",
+    "eatry":       "Eatery",        # typo
+    "pharmacy":    "Pharmacy",
+    "pharmcy":     "Pharmacy",      # typo
+    "hotel":       "Hotel",
+    "bakery":      "Bakery",
+    "bakry":       "Bakery",        # typo (~395 outlets)
+    "kiosk":       "Kiosk",
+    "smmt":        "SMMT",          # canonical FMCG modern-trade code
+    # Possible variants from other Sri Lankan FMCG datasets
+    "restraunt":   "Restaurant",
+    "restaurant":  "Restaurant",
     "supermarket": "Supermarket",
     "convenience": "Convenience",
 }

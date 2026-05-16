@@ -96,6 +96,65 @@ def attach_distributor(panel: pd.DataFrame, transactions: pd.DataFrame) -> pd.Da
 
 
 # ---------------------------------------------------------------------------
+# SKU mix features (premium / mass / mid share + price tier + diversity)
+#
+# Empirical price tiers derived from observed price-per-liter:
+#   Mass     (avg < 100 LKR/L): SKU_05, SKU_06
+#   Mid-tier (200-400 LKR/L):    SKU_01, SKU_02, SKU_03, SKU_04, SKU_10
+#   Premium  (400-700 LKR/L):    SKU_07, SKU_08
+#   Super-premium (>1000 LKR/L): SKU_09
+# ---------------------------------------------------------------------------
+
+SKU_TIER = {
+    "SKU_05": "mass",        "SKU_06": "mass",
+    "SKU_01": "mid",         "SKU_02": "mid",  "SKU_03": "mid",
+    "SKU_04": "mid",         "SKU_10": "mid",
+    "SKU_07": "premium",     "SKU_08": "premium",
+    "SKU_09": "super_premium",
+}
+
+
+def compute_sku_mix(transactions: pd.DataFrame) -> pd.DataFrame:
+    """Per-outlet SKU mix features. Returns one row per Outlet_ID with:
+       avg_price_per_liter, premium_share, mass_share, mid_share, super_premium_share,
+       sku_diversity, top_sku_share.
+    """
+    t = transactions.copy()
+    t["sku_tier"] = t["SKU_ID"].map(SKU_TIER).fillna("mid")
+    # Use absolute volume so returns don't artificially deflate
+    t["abs_vol"] = t["Volume_Liters"].abs()
+    t["abs_bill"] = t["Total_Bill_Value"].abs()
+
+    # Volume-weighted average price per liter
+    grp = t.groupby("Outlet_ID")
+    total_vol = grp["abs_vol"].sum()
+    total_bill = grp["abs_bill"].sum()
+    avg_price = (total_bill / total_vol.replace(0, np.nan)).rename("avg_price_per_liter")
+
+    # Tier shares (volume-weighted)
+    tier_vol = (t.groupby(["Outlet_ID", "sku_tier"])["abs_vol"].sum()
+                 .unstack(fill_value=0))
+    tier_share = tier_vol.div(tier_vol.sum(axis=1), axis=0).fillna(0)
+    for col in ["mass", "mid", "premium", "super_premium"]:
+        if col not in tier_share.columns:
+            tier_share[col] = 0.0
+    tier_share = tier_share.rename(columns={
+        "mass": "mass_share",
+        "mid": "mid_share",
+        "premium": "premium_share",
+        "super_premium": "super_premium_share",
+    })
+
+    # SKU diversity + top-SKU dominance
+    sku_diversity = grp["SKU_ID"].nunique().rename("sku_diversity")
+    top_sku_share = (t.groupby(["Outlet_ID", "SKU_ID"])["abs_vol"].sum()
+                       .groupby(level=0).apply(lambda s: s.max() / s.sum() if s.sum() > 0 else 0)
+                       .rename("top_sku_share"))
+
+    return pd.concat([avg_price, tier_share, sku_diversity, top_sku_share], axis=1).reset_index()
+
+
+# ---------------------------------------------------------------------------
 # Constraint indicators at outlet-month level (used by modeling Phase 5)
 # ---------------------------------------------------------------------------
 
@@ -230,7 +289,8 @@ def _trend_slope(values: np.ndarray) -> float:
 def build_outlet_features(panel: pd.DataFrame,
                           master: pd.DataFrame,
                           coords: pd.DataFrame,
-                          poi: pd.DataFrame) -> pd.DataFrame:
+                          poi: pd.DataFrame,
+                          sku_mix: pd.DataFrame = None) -> pd.DataFrame:
     """One row per outlet with ~50 engineered features."""
     p = panel.sort_values(["Outlet_ID", "Year", "Month"])
 
@@ -307,6 +367,15 @@ def build_outlet_features(panel: pd.DataFrame,
              .merge(coords[["Outlet_ID", "Latitude", "Longitude"]], on="Outlet_ID", how="left")
              .merge(poi.drop(columns=["Latitude", "Longitude"], errors="ignore"),
                     on="Outlet_ID", how="left"))
+
+    if sku_mix is not None:
+        feats = feats.merge(sku_mix, on="Outlet_ID", how="left")
+        # Fill SKU mix nulls for outlets with no transactions (shouldn't happen but safe)
+        for col in ["avg_price_per_liter", "mass_share", "mid_share",
+                    "premium_share", "super_premium_share",
+                    "sku_diversity", "top_sku_share"]:
+            if col in feats.columns:
+                feats[col] = feats[col].fillna(0)
 
     print(f"  feature frame shape: {feats.shape}")
     return feats
@@ -395,9 +464,20 @@ def main() -> int:
     yoy = compute_yoy_growth(panel)
     print(yoy.to_string(index=False))
 
-    # 6. Per-outlet features
+    # 6. SKU mix features (beverage-industry-specific)
+    print("\n== Computing per-outlet SKU mix ==")
+    sku_mix = compute_sku_mix(txns)
+    print(f"  Per-outlet SKU mix: {sku_mix.shape}")
+    print("  Tier share distribution (mean across outlets):")
+    for col in ["mass_share", "mid_share", "premium_share", "super_premium_share"]:
+        if col in sku_mix.columns:
+            print(f"    {col}: {sku_mix[col].mean():.3f}")
+    print(f"    avg_price_per_liter: {sku_mix['avg_price_per_liter'].mean():.2f} LKR")
+    print(f"    sku_diversity (mean): {sku_mix['sku_diversity'].mean():.2f} of 10")
+
+    # 7. Per-outlet features
     print("\n== Engineering per-outlet features ==")
-    feats = build_outlet_features(panel, master, coords, poi)
+    feats = build_outlet_features(panel, master, coords, poi, sku_mix=sku_mix)
     feats = assign_poi_density_tier(feats)
 
     feats_out = config.GOLD / "outlet_features.parquet"

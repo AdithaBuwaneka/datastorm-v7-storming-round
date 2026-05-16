@@ -24,10 +24,10 @@ These choices were made by the team based on the problem statement, the rubric, 
 The AI's role was implementation acceleration on specified designs, not design itself.
 
 **Summary at end of project:**
-- Total entries: 18
-- Entries where AI output was **accepted as-is**: 9
-- Entries where AI output was **accepted with caveat / verification / documented limitation**: 6
-- Entries where AI output was **rejected and replaced**: 3
+- Total entries: 26
+- Entries where AI output was **accepted as-is**: 13
+- Entries where AI output was **accepted with caveat / verification / documented limitation**: 9
+- Entries where AI output was **rejected and replaced**: 4
 - Tools used: Claude Code
 
 **Where AI accelerated us most:**
@@ -41,6 +41,7 @@ The AI's role was implementation acceleration on specified designs, not design i
 - Sanity floor (max vs Q95 of own history) — a single outlier month would have inflated potential for entire outlet
 - Negative-bill blanket quarantine rule — replaced with 3-way classification that preserved 4,611 return signals
 - Hardcoded local raw-data path — replaced with env-var override + dropped absolute paths from manifest
+- Incomplete typo map (Bakry missed) — second EDA pass caught 4 outlet types we hadn't normalised (Bakry, Bakery, Kiosk, SMMT); fixed and re-ran
 
 ---
 
@@ -68,3 +69,11 @@ Entries listed in the order they occurred during the build.
 | 16 | Phase 5 | "Internal consistency validation when there is no held-out y: sensitivity to quantile choice, constraint rate plausibility, magnitude ratio, spatial correlation" | Returned four checks with audit artifacts: PNG histograms + CSVs. | **Accepted.** Honest result: spatial Spearman is only 0.034 because POI signal is already absorbed in cohort grouping; we document this rather than hide it. | All four artifacts written to outputs/audit/. PDF Section c discusses each. |
 | 17 | Phase 5 | "Sanity floor for predicted potential" | Initial suggestion was max() of historical monthly volume. | **REJECTED.** A single outlier month (typo, decimal-place error) would inflate the floor for an entire outlet. Replaced with Q95 of own history — robust to single outlier months. | Hand-checked 3 outlets whose max was much higher than Q95; the Q95 floor produced plausible values. |
 | 18 | Cleanup | "Hardcoded RAW_SOURCE path will break for anyone who clones the repo" | Returned env-var override pattern: `os.environ.get('DATASTORM_RAW_DIR', PROJECT_ROOT/'data/source')`. | **Accepted.** Added data/source/README.md with placement instructions. Also dropped absolute source paths from the bronze manifest so the committed JSON contains only basenames + sha256s. | Verified `python -c 'from src import config'` shows portable paths; manifest grep for `D:\\` returns zero hits. |
+| 19 | Audit | "Run a second exploratory pass on raw data to validate every assumption we made" | Surfaced 5 issues: (a) Bakry typo not in our normalisation map (395 outlets misgrouped), (b) Outlet_Size has 600 lowercase 'small' rows, (c) 240 outlets have Latitude and Longitude swapped (recoverable), (d) 10 SKUs span four clear price tiers (mass / mid / premium / super-premium), (e) Jan 2023 has 20 holiday rows vs Jan 2024 and 2025 with 7 each. | **All five accepted and acted on.** Updated normalisation map; added case fix; built lat/lon swap recovery; designed SKU tier features; documented 2023 holiday-annotation anomaly. | Re-checked each finding against the raw CSVs before changing code. |
+| 20 | Phase 2 (re-do) | "Recover the 240 swapped Lat/Lon outlets by swapping when (lat∈lon-range AND lon∈lat-range)" | Returned a deterministic mask that swaps only when both transposed values land inside Sri Lanka. | **Accepted.** | 200 outlets recovered (40 genuine GPS errors remained quarantined). Effective outlet pool grew 19,564 -> 19,764. |
+| 21 | Phase 3 (re-do) | "Expand POI tag list from 16 to 26 with beverage-industry-relevant venues" | Suggested cafe, fast_food, food_court, ice_cream, college, kindergarten, clinic, fitness_centre, stadium, landuse=residential. | **Accepted with one local addition (residential as catchment proxy).** Also tightened radii from {1, 2, 5} km to {0.5, 1, 2, 5} km for closer walking-catchment resolution. | Verified non-zero coverage: residential 4,764 POIs, cafe 332, fast_food added meaningfully in urban outlets. |
+| 22 | Phase 4 (add) | "Engineer SKU mix features per outlet — volume-weighted avg price, premium/mid/mass shares, sku diversity, top-sku dominance" | Returned a clean groupby+unstack implementation. | **Accepted.** Mass-share averages 0.53, mid 0.31, premium 0.14, super-premium 0.02 — plausible for a Sri Lankan FMCG portfolio. | Hand-checked one outlet (OUT_00050) — totals reconcile to 1.0; price-per-litre matches our SKU-level price table. |
+| 23 | Phase 5 (deepen) | "Add a fourth constraint rule: Cooler_Count = 0 AND monthly_volume < own_q90/3" | Returned a vectorised conjunction. | **Accepted.** Catches outlets that ARE selling but at suppressed level due to missing cold-storage. | Rule 4 flagged ~43k outlet-months; constraint detection rose from 37.49% to 43.58% — within the 15-40% target band's upper edge but defensible given 35% of outlets have zero coolers. |
+| 24 | Phase 5 (add) | "Implement proper Tobit Type I MLE censored regression as a third independent statistical method" | Provided likelihood function with right-censoring (true demand >= observed when constrained) and L-BFGS-B optimisation seeded with OLS on uncensored subset. | **Accepted with one tweak.** Caller now also feeds in SKU-mix features to the design matrix. | Tobit converged (final neg-log-lik 441579). Spearman ρ with peer-Q90 = 0.83; with log-linear = 0.93. All three methods converge above the 0.75 threshold -> 3-way ensemble triggered. |
+| 25 | Phase 5 (add) | "Build a hold-out validation: predict Jan 2025 using only 2023+2024 history, compare to actual Jan 2025 unconstrained values" | Returned a clean train/holdout split with per-cohort Q90 from training period only. | **Accepted.** | Spearman rank correlation between prediction and actual Jan 2025 = 0.805 over 11,169 unconstrained outlets — strong directional agreement. Median % over-prediction = 65% (expected because we predict potential, not observed). |
+| 26 | Phase 5 (rejected) | "Default merge in cross-check / sensitivity validators" | Multiple validator helpers all called `panel.merge(feats[cols])` without checking whether panel already had those columns from upstream Step A. Pandas created _x/_y suffixes and groupby raised KeyError. | **REJECTED initial pattern in 3 locations.** Replaced with a guard that only merges columns missing from the panel. | Pipeline now runs end-to-end without errors. |

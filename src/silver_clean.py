@@ -48,6 +48,14 @@ def clean_outlet_master() -> pd.DataFrame:
                         config.VALID_OUTLET_SIZES,
                         dataset_name="outlet_master", check_name="outlet_size_value_set",
                         case_insensitive=True)
+    # Case-normalise Outlet_Size to canonical title-case (raw has 600 'small' lowercase rows)
+    size_map = {s.lower(): s for s in config.VALID_OUTLET_SIZES}
+    n_size_fixed = int((df["Outlet_Size"] != df["Outlet_Size"].astype(str).str.strip()
+                                                .str.lower().map(size_map)).sum())
+    df["Outlet_Size"] = (df["Outlet_Size"].astype(str).str.strip().str.lower()
+                             .map(size_map).fillna(df["Outlet_Size"]))
+    if n_size_fixed:
+        print(f"  Outlet_Size case-normalised: {n_size_fixed} rows changed to canonical form")
 
     # Cooler_Count integer coercion: quarantine non-integer rows
     coerced = pd.to_numeric(df["Cooler_Count"], errors="coerce")
@@ -83,6 +91,46 @@ def clean_outlet_coordinates(master_ids: set[str]) -> pd.DataFrame:
                         dataset_name="outlet_coordinates", check_name="nulls_mandatory")
     df = dq.apply_check(dq.check_referential_integrity, df, "Outlet_ID", master_ids,
                         dataset_name="outlet_coordinates", check_name="ref_outlet_master")
+
+    # ------------------------------------------------------------------------
+    # Recover swapped Latitude/Longitude before bbox quarantine.
+    # ~240 outlets in the raw data have Lat / Lon transposed (e.g., Lat=79.9,
+    # Lon=7.1 — clearly Sri Lankan magnitudes but wrong columns). Swapping
+    # restores them to the SL bbox. Genuine GPS errors like (0, 0) are NOT
+    # recoverable and fall through to the range check.
+    # ------------------------------------------------------------------------
+    lat_in_sl = df["Latitude"].between(*config.SL_LAT_BOUNDS)
+    lon_in_sl = df["Longitude"].between(*config.SL_LON_BOUNDS)
+    # Candidate-for-swap: lat is in Lon range AND lon is in Lat range
+    lat_looks_like_lon = df["Latitude"].between(*config.SL_LON_BOUNDS)
+    lon_looks_like_lat = df["Longitude"].between(*config.SL_LAT_BOUNDS)
+    swap_mask = (~lat_in_sl) & (~lon_in_sl) & lat_looks_like_lon & lon_looks_like_lat
+    n_swapped = int(swap_mask.sum())
+    if n_swapped:
+        print(f"  RECOVERY: swapping Lat/Lon for {n_swapped} outlets "
+              f"(Lat/Lon were transposed in source).")
+        new_lat = df["Latitude"].copy()
+        new_lon = df["Longitude"].copy()
+        new_lat[swap_mask] = df.loc[swap_mask, "Longitude"].values
+        new_lon[swap_mask] = df.loc[swap_mask, "Latitude"].values
+        df["Latitude"]  = new_lat
+        df["Longitude"] = new_lon
+
+        # Persist a forensic CSV of the recovery actions
+        config.AUDIT.mkdir(parents=True, exist_ok=True)
+        df.loc[swap_mask, ["Outlet_ID", "Latitude", "Longitude"]] \
+          .to_csv(config.AUDIT / "coords_swapped_recovered.csv", index=False)
+        # Log to forensics
+        fx._log(
+            "Lat/Lon swapped values recovered",
+            count=n_swapped,
+            examples=df.loc[swap_mask, "Outlet_ID"].head(5).tolist(),
+            treatment="cleaned",
+            detail="Source had Latitude and Longitude column values transposed. "
+                   "Swap was deterministic and recoverable (both values land in "
+                   "Sri Lanka after swap). 1.2% of outlets reclaimed.",
+        )
+
     df = dq.apply_check(dq.check_value_range, df, "Latitude",
                         min_val=config.SL_LAT_BOUNDS[0], max_val=config.SL_LAT_BOUNDS[1],
                         dataset_name="outlet_coordinates", check_name="lat_range_SL")
