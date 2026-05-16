@@ -392,25 +392,20 @@ def assign_poi_density_tier(feats: pd.DataFrame, q_cuts: tuple = (0.25, 0.5, 0.7
         cols = [c for c in feats.columns if c.endswith("_2km") and c.startswith("poi_")]
         feats[total_col] = feats[cols].sum(axis=1)
 
-    def bucket(g):
-        if g[total_col].nunique() <= 1:
-            g["poi_tier"] = 0
-            return g
-        cuts = g[total_col].quantile(list(q_cuts)).tolist()
-        labels = []
-        for v in g[total_col]:
-            if v <= cuts[0]:
-                labels.append(0)
-            elif v <= cuts[1]:
-                labels.append(1)
-            elif v <= cuts[2]:
-                labels.append(2)
-            else:
-                labels.append(3)
-        g["poi_tier"] = labels
-        return g
-
-    feats = feats.groupby("Province", group_keys=False).apply(bucket)
+    # Compute per-province quantile cutoffs, then assign tier without
+    # using groupby().apply() — avoids pandas 3.0+ grouping-column drop.
+    feats = feats.copy()
+    feats["poi_tier"] = 0
+    for prov, idx in feats.groupby("Province").groups.items():
+        sub = feats.loc[idx, total_col]
+        if sub.nunique() <= 1:
+            continue
+        cuts = sub.quantile(list(q_cuts)).tolist()
+        tier = pd.Series(0, index=idx)
+        tier[sub > cuts[0]] = 1
+        tier[sub > cuts[1]] = 2
+        tier[sub > cuts[2]] = 3
+        feats.loc[idx, "poi_tier"] = tier.values
     return feats
 
 
