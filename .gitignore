@@ -10,6 +10,15 @@ venv/
 env/
 .venv/
 
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+webapp/backend/.env
+webapp/frontend/.env.local
+
 # IDE
 .vscode/
 .idea/
