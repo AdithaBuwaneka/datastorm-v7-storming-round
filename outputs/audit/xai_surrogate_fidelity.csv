@@ -1,2 +1,2 @@
 surrogate_spearman_vs_ensemble,surrogate_r2_vs_ensemble,surrogate_median_pct_err,n_features,n_outlets
-0.9725,0.998,3.08,66,19960
+0.9733,0.9981,3.01,72,19960

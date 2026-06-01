@@ -50,6 +50,8 @@ NUMERIC_FEATURES = [
     "same_type_competitors_500m", "same_type_competitors_1km",
     "competitor_density_norm",
     "is_isolated_market", "is_dense_market",
+    "hhi_1500m", "territory_radius_m", "type_weighted_pressure",
+    "market_concentrated_flag", "market_fragmented_flag", "isolated_territory_flag",
     # Spatial demand decay scores (normalised)
     "footfall_score_norm", "school_score_norm", "tourist_score_norm",
     "health_score_norm", "worship_score_norm", "food_pairing_score_norm",

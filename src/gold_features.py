@@ -503,6 +503,10 @@ def build_outlet_features(panel: pd.DataFrame,
         + diversity * weights["diversity"]
     ) / total_w
 
+    # Market structure (HHI, territory radius, type-weighted pressure)
+    from src import competition_features as cf
+    feats = cf.add_features(feats, market_share_col="monthly_volume_mean")
+
     print(f"  feature frame shape: {feats.shape}")
     return feats
 
@@ -642,6 +646,12 @@ def main() -> int:
         "competitor_density_norm",
         "is_isolated_market",
         "is_dense_market",
+        "hhi_1500m",
+        "territory_radius_m",
+        "type_weighted_pressure",
+        "market_concentrated_flag",
+        "market_fragmented_flag",
+        "isolated_territory_flag",
     ]
     poi_cols = [c for c in poi_cols if c in feats.columns]
     poi_out = feats.reindex(columns=poi_cols).copy().fillna(0.0)

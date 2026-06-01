@@ -217,6 +217,32 @@ def write_outputs(df: pd.DataFrame) -> None:
     top50.to_csv(audit_top50, index=False)
     print(f"  Audit (top 50 outlets): {audit_top50}")
 
+    # Audit: elasticity sensitivity. We do not have campaign data to estimate
+    # the absolute liters-per-LKR conversion, so we report expected uplift
+    # under a range of beta scalars applied to the raw objective value:
+    #     expected_uplift_L = beta * sum_i kappa_i * sqrt(x_i)
+    # A modeller / business owner can pick the beta they consider defensible
+    # given their own past campaign data.
+    response_score = float((df["kappa"] *
+                            np.sqrt(df["Trade_Spend_LKR"].clip(lower=0.0))).sum())
+    betas = [0.001, 0.005, 0.010, 0.025, 0.050, 0.100]
+    sens = pd.DataFrame({
+        "beta": betas,
+        "expected_uplift_L": [round(b * response_score, 1) for b in betas],
+        "expected_uplift_per_outlet_L": [
+            round(b * response_score / max(int((df["Trade_Spend_LKR"] > 0).sum()), 1), 2)
+            for b in betas
+        ],
+        "implied_L_per_LKR_at_median_spend": [
+            round(b * df["kappa"].median() / max(np.sqrt(df.loc[df["Trade_Spend_LKR"] > 0, "Trade_Spend_LKR"].median()), 1.0), 4)
+            for b in betas
+        ],
+    })
+    audit_sens = config.AUDIT / "budget_sensitivity.csv"
+    sens.to_csv(audit_sens, index=False)
+    print(f"  Audit (sensitivity sweep): {audit_sens}")
+    print(sens.to_string(index=False))
+
 
 def main() -> None:
     print("\n" + "="*70)
