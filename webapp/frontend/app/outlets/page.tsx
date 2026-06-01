@@ -77,7 +77,10 @@ export default async function OutletsPage({
         </Card>
       ) : (
         <>
-          <div className="mt-6 overflow-x-auto rounded-lg border border-border bg-card">
+          <div
+            className="mt-6 overflow-x-auto rounded-lg border border-border bg-card"
+            style={{ minHeight: `${PAGE_SIZE * 44 + 56}px` }}
+          >
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
@@ -169,6 +172,18 @@ export default async function OutletsPage({
   );
 }
 
+function buildPageList(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "...")[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) pages.push("...");
+  for (let p = start; p <= end; p++) pages.push(p);
+  if (end < total - 1) pages.push("...");
+  pages.push(total);
+  return pages;
+}
+
 function Pagination({
   page,
   n_pages,
@@ -192,23 +207,61 @@ function Pagination({
     return `/outlets?${next.toString()}`;
   };
 
+  const pages = buildPageList(page, n_pages);
+
   return (
-    <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
       <span>
-        Page {page} of {n_pages} · {fmtNumber(total)} outlets
+        Page <span className="font-semibold text-foreground">{page}</span> of{" "}
+        {fmtNumber(n_pages)} · {fmtNumber(total)} outlets
       </span>
-      <div className="flex gap-2">
-        <Link href={link(Math.max(1, page - 1))}>
-          <Button variant="outline" size="sm" disabled={page <= 1}>
+      <nav className="flex items-center gap-1">
+        <Link href={link(Math.max(1, page - 1))} aria-disabled={page <= 1}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            className="h-8"
+          >
             ← Prev
           </Button>
         </Link>
-        <Link href={link(Math.min(n_pages, page + 1))}>
-          <Button variant="outline" size="sm" disabled={page >= n_pages}>
+
+        {pages.map((p, i) =>
+          p === "..." ? (
+            <span
+              key={`ell-${i}`}
+              className="px-2 text-xs text-muted-foreground"
+            >
+              …
+            </span>
+          ) : (
+            <Link key={p} href={link(p)}>
+              <Button
+                variant={p === page ? "default" : "outline"}
+                size="sm"
+                className="h-8 min-w-8 px-2.5 font-mono text-xs"
+              >
+                {p}
+              </Button>
+            </Link>
+          ),
+        )}
+
+        <Link
+          href={link(Math.min(n_pages, page + 1))}
+          aria-disabled={page >= n_pages}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= n_pages}
+            className="h-8"
+          >
             Next →
           </Button>
         </Link>
-      </div>
+      </nav>
     </div>
   );
 }

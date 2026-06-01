@@ -81,21 +81,23 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
         onChange={(v) => push("risk_band", v)}
       />
 
-      <div className="ml-auto flex items-center gap-2">
-        {pending && (
-          <span className="text-xs text-muted-foreground">Loading…</span>
-        )}
-        {hasActive && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1 text-xs"
-            onClick={() => router.push("/outlets")}
-          >
-            <X className="h-3 w-3" />
-            Clear
-          </Button>
-        )}
+      <div className="ml-auto flex h-8 min-w-[110px] items-center justify-end gap-2">
+        <span
+          className={`text-xs text-muted-foreground transition-opacity ${
+            pending ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          Loading…
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`h-8 gap-1 text-xs ${hasActive ? "" : "invisible"}`}
+          onClick={() => router.push("/outlets")}
+        >
+          <X className="h-3 w-3" />
+          Clear
+        </Button>
       </div>
     </div>
   );
