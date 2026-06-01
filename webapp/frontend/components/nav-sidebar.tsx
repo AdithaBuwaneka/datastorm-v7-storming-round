@@ -5,24 +5,14 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Store,
-  Wallet,
-  Snowflake,
-  AlertTriangle,
   BarChart3,
-  Map,
-  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/outlets", label: "Outlets", icon: Store },
-  { href: "/budget", label: "Budget", icon: Wallet },
-  { href: "/cooler-roi", label: "Cooler ROI", icon: Snowflake },
-  { href: "/dormancy", label: "Dormancy risk", icon: AlertTriangle },
-  { href: "/scorecard", label: "Scorecard", icon: BarChart3 },
-  { href: "/territories", label: "Territories", icon: Map },
-  { href: "/forensics", label: "Forensics", icon: FileText },
+  { href: "/insights", label: "Insights", icon: BarChart3 },
 ] as const;
 
 export function NavSidebar() {
