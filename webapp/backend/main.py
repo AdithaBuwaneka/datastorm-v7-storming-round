@@ -30,11 +30,18 @@ from .services.data_loader import get_cache          # noqa: E402
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import os
     cache = get_cache()
     print(f"[startup] Repo root: {cache.repo_root}")
     print(f"[startup] outlets table: {cache.outlets_table.shape}")
     print(f"[startup] predictions:   {cache.predictions.shape}")
     print(f"[startup] dormancy:      {cache.dormancy.shape}")
+    key = os.environ.get("GEMINI_API_KEY")
+    if key:
+        print(f"[startup] GEMINI_API_KEY loaded ({len(key)} chars) "
+              f"using model {os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')}")
+    else:
+        print("[startup] WARN: GEMINI_API_KEY not set — /api/xai endpoints will 503")
     yield
 
 
@@ -47,7 +54,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -63,6 +70,7 @@ def root():
     return {
         "service": "Outlet Intelligence API",
         "endpoints": [
+            "GET  /health",
             "GET  /api/summary",
             "GET  /api/outlets",
             "GET  /api/outlets/filters",
@@ -80,4 +88,17 @@ def root():
             "GET  /api/forensics",
             "GET  /api/shap/global",
         ],
+    }
+
+
+@app.get("/health")
+def health():
+    """Liveness probe used by the frontend on first paint."""
+    import os
+    cache = get_cache()
+    return {
+        "status": "ok",
+        "outlets_loaded": int(len(cache.outlets_table)),
+        "predictions_loaded": int(len(cache.predictions)),
+        "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
     }
