@@ -12,5 +12,7 @@ tqdm>=4.65
 # XAI attribution + counterfactual reasoning
 xgboost>=2.0
 shap>=0.45
+# Geographic sanity — forensic-only land-mask check in Phase 2
+global-land-mask>=1.0
 # Optional (only needed for notebooks/00_demo_end_to_end.ipynb):
 #   pip install jupyter

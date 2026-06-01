@@ -206,6 +206,13 @@ def clean_outlet_coordinates(master_ids: set[str]) -> pd.DataFrame:
                         min_val=config.SL_LON_BOUNDS[0], max_val=config.SL_LON_BOUNDS[1],
                         dataset_name="outlet_coordinates", check_name="lon_range_SL")
 
+    # Land-mask sanity check: identify outlets whose coords fall outside a
+    # coarse global land mask, stratify by distance to nearest land outlet,
+    # and quarantine those isolated by >= 5 km (the 'likely_ocean_outlier'
+    # bucket). Coastal businesses inside the 5 km buffer are kept — the
+    # library's 1-arc-min grid is too coarse to call them ocean.
+    df = fx.check_sea_coordinates(df, quarantine_threshold_km=5.0)
+
     out = config.SILVER_CLEAN / "outlet_coordinates_clean.parquet"
     df.to_parquet(out, index=False)
     print(f"  -> {out}  shape={df.shape}")

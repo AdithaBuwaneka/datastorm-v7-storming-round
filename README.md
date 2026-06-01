@@ -15,12 +15,12 @@ manager browse, filter, and ask an LLM to explain any outlet on the network.
 
 - 5-method censored-demand ensemble (peer-Q90 anchor + log-linear + Tobit
   MLE + half-normal SFA + Phase-3 business formula) with hold-out Spearman
-  rho ≈ 0.79 over ~11,200 outlets.
+  rho ≈ 0.79 over ~10,950 outlets.
 - 9-category Gaussian / gravity distance-decay POI scoring over 43,000 OSM
   POIs, plus HHI, Voronoi-style territory radius, and type-weighted
   competition pressure.
-- Concave water-filling LP allocates LKR 4,999,955.90 of trade spend
-  across 8,989 Western Province outlets, split into discount /
+- Concave water-filling LP allocates LKR 4,999,912.87 of trade spend
+  across 8,588 Western Province outlets, split into discount /
   merchandising / promotional channels.
 - Per-outlet SHAP attribution + monotone-constrained counterfactuals
   (add a cooler, remove competition) feeding a Gemini 2.5 Flash narrative.
@@ -171,7 +171,7 @@ More setup detail at [`webapp/README.md`](webapp/README.md).
 | # | Path | Description |
 |---|---|---|
 | 1 | `outputs/DataX_predictions.csv` | 20,000 × 2 (Outlet_ID, Maximum_Monthly_Liters) |
-| 2 | `outputs/DataX_budget_allocations.csv` | 8,989 × 2 (Outlet_ID, Trade_Spend_LKR) — Western Province |
+| 2 | `outputs/DataX_budget_allocations.csv` | 8,588 × 2 (Outlet_ID, Trade_Spend_LKR) — Western Province |
 | 3 | this repository | Bronze→Silver→Gold pipeline + business modules + web app |
 | 4 | `webapp/` | Next.js + FastAPI app with Gemini-powered XAI per outlet |
 | 5 | `report/` | Technical paper |
@@ -188,7 +188,7 @@ Audit artifacts produced by the pipeline live under `outputs/audit/` and
 | `outputs/audit/dormancy_top200_at_risk.csv` | Sales-rep intervention shortlist |
 | `outputs/audit/budget_allocation_by_channel.csv` | Per-outlet discount / merch / promo split |
 | `outputs/audit/distributor_scorecard.csv` | 10-distributor benchmark |
-| `outputs/audit/territory_clusters_summary.csv` | 96 HDBSCAN sales territories |
+| `outputs/audit/territory_clusters_summary.csv` | 91 HDBSCAN sales territories |
 | `outputs/audit/shap_top_drivers_per_outlet.csv` | Top-5 +/- SHAP drivers per outlet |
 | `outputs/audit/forensics_findings.csv` | Beyond-DQ findings with treatment |
 | `data/bronze/_manifest.json` | sha256 + row counts of the six raw files |
@@ -251,23 +251,23 @@ Audit artifacts produced by the pipeline live under `outputs/audit/` and
 | Metric | Value |
 |---|---|
 | Raw transactions ingested | 2,376,389 |
-| Rows quarantined with reason | 73,285 (3.08%) |
 | Outlets recovered via Lat/Lon swap fix | 200 |
-| Outlet_Type typos normalised | 979 (Bakry, Grocry, " Eatery ", Eatry) |
-| Outlets surviving Silver | 19,960 (20,000 master ∩ coordinates − rejects) |
-| OpenStreetMap POIs scraped | 43,023 across 36 tag combinations / 9 categories |
+| Outlet_Type typos normalised | 985 (Bakry, Grocry, " Eatery ", Eatry) |
+| Sea-coordinate outliers quarantined (≥5km from any land outlet) | 521 |
+| Outlets surviving Silver | 19,439 (20,000 master ∩ coordinates − rejects − sea-coord outliers) |
+| OpenStreetMap POIs scraped | 42,999 across 36 tag combinations / 9 categories |
 | Engineered features per outlet | 229 |
 | Constraint-detection rules | 4 (OR-combined) |
 | Statistical methods cross-checked | 5 |
 | Pairwise method Spearman | all ≥ 0.83 |
-| Hold-out Spearman (Jan 2025 from 2023-24) | 0.794 (n = 11,256) |
-| LKR 5M budget actually allocated | 4,999,955.90 across 8,803 funded outlets |
-| Channel split | Discount 35% / Merchandising 42% / Promotional 23% |
-| Cooler Top-100 24-month margin uplift | LKR 33,629,125 (net 28,629,125 of LKR 5M capex) |
-| Cooler Top-100 median payback | 3.6 months |
-| Dormancy classifier 5-fold CV AUC | 0.879 ± 0.006 |
-| HDBSCAN sub-province territories | 96 |
-| Predicted potential (median / mean) | 175.0 L / 307.2 L per outlet-month |
+| Hold-out Spearman (Jan 2025 from 2023-24) | 0.793 (n = 10,949) |
+| LKR 5M budget actually allocated | 4,999,912.87 across 8,416 funded outlets |
+| Channel split | Discount 34.9% / Merchandising 41.8% / Promotional 23.3% |
+| Cooler Top-100 24-month margin uplift | LKR 36,650,325 (net 31,650,325 of LKR 5M capex) |
+| Cooler Top-100 median payback | 3.33 months |
+| Dormancy classifier 5-fold CV AUC | 0.879 ± 0.004 |
+| HDBSCAN sub-province territories | 91 |
+| Predicted potential (median / mean) | 186.5 L / 330.8 L per outlet-month |
 
 ## Repository layout in detail
 
