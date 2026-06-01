@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { NavSidebar } from "@/components/nav-sidebar";
+import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
   title: "Outlet Intelligence",
@@ -10,14 +11,21 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground">
-        <div className="flex">
-          <NavSidebar />
-          <main className="min-h-screen flex-1 p-6 lg:p-10">
-            {children}
-          </main>
-        </div>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <div className="flex">
+            <NavSidebar />
+            <main className="min-h-screen flex-1 p-6 lg:p-10">
+              {children}
+            </main>
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );

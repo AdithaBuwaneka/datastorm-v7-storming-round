@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/risk-badge";
 import { AiNarrative } from "./ai-narrative";
+import { OutletMap } from "@/components/outlet-map";
 
 export default async function OutletDetailPage({
   params,
@@ -52,15 +53,15 @@ export default async function OutletDetailPage({
         actions={<RiskBadge band={o.risk_band} />}
       />
 
-      <section className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <section className="mb-6">
+        <Card>
           <CardHeader>
             <CardTitle>Predicted potential</CardTitle>
             <CardDescription>
               January 2026 if systemic constraints were relieved.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-6 sm:grid-cols-4">
+          <CardContent className="grid grid-cols-2 gap-6 sm:grid-cols-4 lg:grid-cols-8">
             <Metric label="Predicted Jan 2026" value={fmtLitres(o.Maximum_Monthly_Liters, 1)} />
             <Metric label="Recent monthly avg" value={fmtLitres(o.monthly_volume_mean, 1)} />
             <Metric label="Own Q90" value={fmtLitres(o.monthly_volume_q90, 1)} />
@@ -80,70 +81,29 @@ export default async function OutletDetailPage({
             />
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>What-if scenarios</CardTitle>
-            <CardDescription>
-              Model-predicted deltas if a constraint were relieved.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <DeltaRow
-              label="Add one cooler"
-              base={cf.base_pred}
-              after={cf.cf_add_cooler}
-              delta={cf.delta_add_cooler}
-            />
-            <DeltaRow
-              label="Remove competitive drag"
-              base={cf.base_pred}
-              after={cf.cf_zero_competition}
-              delta={cf.delta_zero_competition}
-            />
-            {o.Trade_Spend_LKR != null && (
-              <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-sm">
-                <span className="text-muted-foreground">
-                  LKR allocated for Jan 2026:
-                </span>{" "}
-                <span className="font-semibold">{fmtLKR(o.Trade_Spend_LKR)}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </section>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Top reasons the score is high</CardTitle>
-            <CardDescription>Largest positive SHAP contributors.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <DriverList drivers={positives} positive />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Top reasons the score is held back</CardTitle>
-            <CardDescription>Largest negative SHAP contributors.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <DriverList drivers={negatives} />
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="mt-6">
-        <Card>
+      <section className="mb-6 grid gap-6 lg:grid-cols-2">
+        {o.Latitude != null && o.Longitude != null && (
+          <Card className="flex flex-col">
+            <CardHeader>
+              <CardTitle>Geographical Location</CardTitle>
+              <CardDescription>Store location on the map.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1">
+              <OutletMap lat={o.Latitude} lng={o.Longitude} title={o.Outlet_ID} />
+            </CardContent>
+          </Card>
+        )}
+        
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle>Recommended actions</CardTitle>
             <CardDescription>
               Top-3 prescriptive interventions ranked by expected monthly L uplift.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1">
             <ol className="flex flex-col gap-3">
               {actions.length === 0 && (
                 <li className="text-muted-foreground">
@@ -174,8 +134,61 @@ export default async function OutletDetailPage({
         </Card>
       </section>
 
-      {roi.is_material_case ? (
-        <section className="mt-6">
+      <section className="mb-6 grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Top reasons the score is high</CardTitle>
+            <CardDescription>Largest positive SHAP contributors.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DriverList drivers={positives} positive />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Top reasons the score is held back</CardTitle>
+            <CardDescription>Largest negative SHAP contributors.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DriverList drivers={negatives} />
+          </CardContent>
+        </Card>
+      </section>
+      
+      <section className="mb-6 grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>What-if scenarios</CardTitle>
+            <CardDescription>
+              Model-predicted deltas if a constraint were relieved.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <DeltaRow
+              label="Add one cooler"
+              base={cf.base_pred}
+              after={cf.cf_add_cooler}
+              delta={cf.delta_add_cooler}
+            />
+            <DeltaRow
+              label="Remove competitive drag"
+              base={cf.base_pred}
+              after={cf.cf_zero_competition}
+              delta={cf.delta_zero_competition}
+            />
+            {o.Trade_Spend_LKR != null && (
+              <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-sm">
+                <span className="text-muted-foreground">
+                  LKR allocated for Jan 2026:
+                </span>{" "}
+                <span className="font-semibold">{fmtLKR(o.Trade_Spend_LKR)}</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {roi.is_material_case ? (
           <Card>
             <CardHeader>
               <CardTitle>Cooler deployment business case</CardTitle>
@@ -183,15 +196,15 @@ export default async function OutletDetailPage({
                 Assumes LKR 50,000 unit cost, 12% gross margin, 12% cost of capital.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-6 sm:grid-cols-4">
+            <CardContent className="grid grid-cols-2 gap-6 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
               <Metric label="Monthly uplift" value={fmtLitres(roi.monthly_uplift_L, 1)} />
               <Metric label="Monthly margin" value={fmtLKR(roi.monthly_margin_uplift_LKR)} />
               <Metric label="Payback" value={`${(roi.payback_months ?? 0).toFixed(1)} mo`} />
               <Metric label="24-mo NPV" value={fmtLKR(roi.npv_24mo_LKR)} />
             </CardContent>
           </Card>
-        </section>
-      ) : null}
+        ) : <div />}
+      </section>
 
       <section className="mt-6">
         <AiNarrative outletId={o.Outlet_ID} />

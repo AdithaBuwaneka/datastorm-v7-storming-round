@@ -37,7 +37,13 @@ export default async function OutletsPage({
   let rows: any[] = [];
   let total = 0;
   let n_pages = 1;
-  let filters = {
+  let filters: {
+    provinces: string[];
+    distributors: string[];
+    outlet_types: string[];
+    outlet_sizes: string[];
+    risk_bands: string[];
+  } = {
     provinces: [],
     distributors: [],
     outlet_types: [],
