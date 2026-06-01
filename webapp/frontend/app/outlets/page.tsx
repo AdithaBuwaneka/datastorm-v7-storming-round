@@ -4,7 +4,6 @@ import { fmtLitres, fmtNumber } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { RiskBadge } from "@/components/risk-badge";
 import { FilterBar } from "./filter-bar";
 
@@ -82,39 +81,60 @@ export default async function OutletsPage({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="whitespace-nowrap px-4 py-3">Outlet</th>
-                  <th className="whitespace-nowrap px-4 py-3">Type</th>
-                  <th className="whitespace-nowrap px-4 py-3">Size</th>
-                  <th className="whitespace-nowrap px-4 py-3">Province</th>
-                  <th className="whitespace-nowrap px-4 py-3">Distributor</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">Predicted Jan 2026</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">Recent avg</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-right">Coolers</th>
-                  <th className="whitespace-nowrap px-4 py-3 text-center">Risk</th>
-                  <th className="px-4 py-3" />
+                  <th className="whitespace-nowrap px-3 py-2.5">Outlet</th>
+                  <th className="whitespace-nowrap px-3 py-2.5">Type / Size</th>
+                  <th className="hidden whitespace-nowrap px-3 py-2.5 md:table-cell">
+                    Province
+                  </th>
+                  <th className="hidden whitespace-nowrap px-3 py-2.5 lg:table-cell">
+                    Distributor
+                  </th>
+                  <th className="whitespace-nowrap px-3 py-2.5 text-right">
+                    Predicted Jan 2026
+                  </th>
+                  <th className="hidden whitespace-nowrap px-3 py-2.5 text-right xl:table-cell">
+                    Recent avg
+                  </th>
+                  <th className="hidden whitespace-nowrap px-3 py-2.5 text-right sm:table-cell">
+                    Coolers
+                  </th>
+                  <th className="whitespace-nowrap px-3 py-2.5 text-center">
+                    Risk
+                  </th>
+                  <th className="px-3 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {rows.map((r) => (
                   <tr key={r.Outlet_ID} className="hover:bg-muted/30">
-                    <td className="px-4 py-3 font-mono text-xs">{r.Outlet_ID}</td>
-                    <td className="px-4 py-3">{r.Outlet_Type}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant="outline">{r.Outlet_Size}</Badge>
+                    <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs">
+                      {r.Outlet_ID}
                     </td>
-                    <td className="px-4 py-3">{r.Province}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{r.Distributor_ID}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium">
+                    <td className="whitespace-nowrap px-3 py-2.5">
+                      <span className="font-medium">{r.Outlet_Type}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        {r.Outlet_Size}
+                      </span>
+                    </td>
+                    <td className="hidden whitespace-nowrap px-3 py-2.5 md:table-cell">
+                      {r.Province}
+                    </td>
+                    <td className="hidden whitespace-nowrap px-3 py-2.5 font-mono text-xs lg:table-cell">
+                      {r.Distributor_ID}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right font-medium">
                       {fmtLitres(r.Maximum_Monthly_Liters, 1)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right text-muted-foreground">
+                    <td className="hidden whitespace-nowrap px-3 py-2.5 text-right text-muted-foreground xl:table-cell">
                       {fmtLitres(r.monthly_volume_mean, 1)}
                     </td>
-                    <td className="px-4 py-3 text-right">{r.Cooler_Count}</td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="hidden px-3 py-2.5 text-right sm:table-cell">
+                      {r.Cooler_Count}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
                       <RiskBadge band={r.risk_band} />
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-3 py-2.5 text-right">
                       <Link href={`/outlets/${r.Outlet_ID}`}>
                         <Button size="sm" variant="outline">
                           Open →
@@ -126,8 +146,8 @@ export default async function OutletsPage({
                 {rows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={10}
-                      className="px-4 py-12 text-center text-muted-foreground"
+                      colSpan={9}
+                      className="px-3 py-12 text-center text-muted-foreground"
                     >
                       No outlets match the current filters.
                     </td>
