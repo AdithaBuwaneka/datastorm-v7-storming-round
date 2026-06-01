@@ -1,9 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
 import { Sparkles, RefreshCw } from "lucide-react";
 
 export function AiNarrative({ outletId }: { outletId: string }) {
@@ -66,9 +74,63 @@ export function AiNarrative({ outletId }: { outletId: string }) {
           <p className="text-sm text-muted-foreground">Generating…</p>
         )}
         {text && (
-          <article className="prose prose-sm max-w-none whitespace-pre-wrap text-sm leading-relaxed">
-            {text}
-          </article>
+          <div className="text-sm leading-relaxed text-foreground">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({ children }) => (
+                  <p className="mb-3 last:mb-0">{children}</p>
+                ),
+                strong: ({ children }) => (
+                  <strong className="font-semibold text-foreground">
+                    {children}
+                  </strong>
+                ),
+                em: ({ children }) => <em className="italic">{children}</em>,
+                ul: ({ children }) => (
+                  <ul className="mb-3 list-disc space-y-1 pl-5 marker:text-muted-foreground last:mb-0">
+                    {children}
+                  </ul>
+                ),
+                ol: ({ children }) => (
+                  <ol className="mb-3 list-decimal space-y-1 pl-5 marker:text-muted-foreground last:mb-0">
+                    {children}
+                  </ol>
+                ),
+                li: ({ children }) => <li>{children}</li>,
+                h1: ({ children }) => (
+                  <h3 className="mt-4 mb-2 text-base font-semibold first:mt-0">
+                    {children}
+                  </h3>
+                ),
+                h2: ({ children }) => (
+                  <h3 className="mt-4 mb-2 text-base font-semibold first:mt-0">
+                    {children}
+                  </h3>
+                ),
+                h3: ({ children }) => (
+                  <h4 className="mt-3 mb-2 text-sm font-semibold first:mt-0">
+                    {children}
+                  </h4>
+                ),
+                code: ({ children }) => (
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                    {children}
+                  </code>
+                ),
+                a: ({ children, href }) => (
+                  <a
+                    href={href}
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {children}
+                  </a>
+                ),
+              }}
+            >
+              {text}
+            </ReactMarkdown>
+          </div>
         )}
       </CardContent>
     </Card>
