@@ -14,7 +14,7 @@ function first(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 export default async function OutletsPage({
   searchParams,
@@ -82,15 +82,15 @@ export default async function OutletsPage({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3">Outlet</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Size</th>
-                  <th className="px-4 py-3">Province</th>
-                  <th className="px-4 py-3">Distributor</th>
-                  <th className="px-4 py-3 text-right">Predicted Jan 2026</th>
-                  <th className="px-4 py-3 text-right">Recent avg</th>
-                  <th className="px-4 py-3 text-right">Coolers</th>
-                  <th className="px-4 py-3 text-center">Risk</th>
+                  <th className="whitespace-nowrap px-4 py-3">Outlet</th>
+                  <th className="whitespace-nowrap px-4 py-3">Type</th>
+                  <th className="whitespace-nowrap px-4 py-3">Size</th>
+                  <th className="whitespace-nowrap px-4 py-3">Province</th>
+                  <th className="whitespace-nowrap px-4 py-3">Distributor</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right">Predicted Jan 2026</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right">Recent avg</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-right">Coolers</th>
+                  <th className="whitespace-nowrap px-4 py-3 text-center">Risk</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -104,10 +104,10 @@ export default async function OutletsPage({
                     </td>
                     <td className="px-4 py-3">{r.Province}</td>
                     <td className="px-4 py-3 font-mono text-xs">{r.Distributor_ID}</td>
-                    <td className="px-4 py-3 text-right font-medium">
+                    <td className="whitespace-nowrap px-4 py-3 text-right font-medium">
                       {fmtLitres(r.Maximum_Monthly_Liters, 1)}
                     </td>
-                    <td className="px-4 py-3 text-right text-muted-foreground">
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-muted-foreground">
                       {fmtLitres(r.monthly_volume_mean, 1)}
                     </td>
                     <td className="px-4 py-3 text-right">{r.Cooler_Count}</td>
