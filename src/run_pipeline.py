@@ -14,6 +14,7 @@ and business analytics:
   Phase 9  Outlet action cards
   Phase 10 Dormancy-risk early warning
   Phase 11 Distributor scorecard
+  Phase 12 Geographic territory clustering (HDBSCAN)
 
 Each phase's main() is invoked in order. Re-running is idempotent: bronze
 overwrites with same bytes; silver wipes the quarantine summary; POI scraping
@@ -32,7 +33,7 @@ import time
 from src import bronze_ingest, silver_clean, poi_scraper, gold_features
 from src import potential_model, budget_optimization
 from src import xai_attribution, cooler_roi, outlet_actions, dormancy_risk
-from src import distributor_scorecard
+from src import distributor_scorecard, spatial_clusters
 
 
 def _wrap(fn):
@@ -55,6 +56,7 @@ PHASES = [
     ("Outlet action cards",                   _wrap(outlet_actions.main)),
     ("Dormancy-risk early warning",           _wrap(dormancy_risk.main)),
     ("Distributor scorecard",                 _wrap(distributor_scorecard.main)),
+    ("Geographic territory clustering",       _wrap(spatial_clusters.main)),
 ]
 
 

@@ -70,6 +70,47 @@ def compute_kappa(feats: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFram
     return df
 
 
+def _channel_weights(row) -> tuple[float, float, float]:
+    """Return (discount_w, merchandising_w, promotional_w) summing to 1.0.
+
+    Heuristic rules:
+      * No cooler today  -> overweight merchandising (in-store visibility)
+      * High type-weighted competition pressure (above median ~10)
+                          -> overweight discount + merchandising (defend share)
+      * Low spatial demand (rural / quiet area)
+                          -> overweight promotional (drive trial)
+      * Otherwise         -> balanced merchandising-heavy default
+    """
+    no_cooler = int(row.get("Cooler_Count", 1) or 0) == 0
+    pressure = float(row.get("type_weighted_pressure", 0.0) or 0.0)
+    spatial  = float(row.get("spatial_demand_score", 0.0) or 0.0)
+
+    if no_cooler:
+        d, m, p = 0.20, 0.55, 0.25
+    elif pressure >= 10.0:
+        d, m, p = 0.40, 0.40, 0.20
+    elif spatial <= 0.10:
+        d, m, p = 0.20, 0.30, 0.50
+    else:
+        d, m, p = 0.30, 0.45, 0.25
+    return d, m, p
+
+
+def _split_by_channel(df: pd.DataFrame) -> pd.DataFrame:
+    weights = df.apply(_channel_weights, axis=1, result_type="expand")
+    weights.columns = ["w_discount", "w_merchandising", "w_promotional"]
+    df = df.join(weights)
+    df["Discount_LKR"]      = (df["Trade_Spend_LKR"] * df["w_discount"]).round(2)
+    df["Merchandising_LKR"] = (df["Trade_Spend_LKR"] * df["w_merchandising"]).round(2)
+    df["Promotional_LKR"]   = (df["Trade_Spend_LKR"] * df["w_promotional"]).round(2)
+    # Rebalance rounding drift so the three columns sum exactly to allocated
+    drift = df["Trade_Spend_LKR"] - (df["Discount_LKR"]
+                                      + df["Merchandising_LKR"]
+                                      + df["Promotional_LKR"])
+    df["Merchandising_LKR"] = (df["Merchandising_LKR"] + drift).round(2)
+    return df
+
+
 def water_fill(kappa: np.ndarray, budget: float, x_max: float,
                max_iter: int = 100, tol: float = 1e-4) -> np.ndarray:
     """Iterative water-filling for max sum(kappa_i sqrt(x_i)) s.t. sum x_i <= B,
@@ -151,6 +192,13 @@ def allocate(feats: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
     spend = np.floor(spend * 100.0) / 100.0
     df["Trade_Spend_LKR"] = spend
 
+    # --- Channel-modality split -----------------------------------------
+    # Each outlet's allocated spend is divided across three promotional
+    # channels using outlet-attribute heuristics. Weights below come from
+    # the marketing-mix-modelling literature (lower elasticity for
+    # off-invoice discounts vs visibility/sampling).
+    df = _split_by_channel(df)
+
     total = df["Trade_Spend_LKR"].sum()
     print(f"  Total allocated: LKR {total:,.2f} (budget LKR {BUDGET_LKR:,.0f})")
     assert total <= BUDGET_LKR + 0.01, f"Budget overflow: {total:,.2f} > {BUDGET_LKR:,.2f}"
@@ -173,11 +221,25 @@ def write_outputs(df: pd.DataFrame) -> None:
     config.OUTPUTS.mkdir(parents=True, exist_ok=True)
     config.AUDIT.mkdir(parents=True, exist_ok=True)
 
-    # Output CSV: Outlet_ID + allocated Trade_Spend_LKR
+    # Output CSV: Outlet_ID + Trade_Spend_LKR (the submission deliverable)
     out = df[["Outlet_ID", "Trade_Spend_LKR"]].sort_values("Outlet_ID")
     out_path = config.OUTPUTS / f"{config.TEAM_NAME}_budget_allocations.csv"
     out.to_csv(out_path, index=False)
     print(f"  Output: {out_path}  shape={out.shape}")
+
+    # Audit: the same allocation split across promotional channels
+    channel_cols = ["Outlet_ID", "Distributor_ID", "Outlet_Type", "Cooler_Count",
+                    "Trade_Spend_LKR",
+                    "Discount_LKR", "Merchandising_LKR", "Promotional_LKR",
+                    "w_discount", "w_merchandising", "w_promotional"]
+    channel_cols = [c for c in channel_cols if c in df.columns]
+    channels = df[channel_cols].sort_values("Outlet_ID")
+    channels_path = config.AUDIT / "budget_allocation_by_channel.csv"
+    channels.to_csv(channels_path, index=False)
+    print(f"  Audit (by channel): {channels_path}")
+    print(f"    Discount total:      LKR {df['Discount_LKR'].sum():>13,.0f}")
+    print(f"    Merchandising total: LKR {df['Merchandising_LKR'].sum():>13,.0f}")
+    print(f"    Promotional total:   LKR {df['Promotional_LKR'].sum():>13,.0f}")
 
     # Audit: per-distributor summary
     by_dist = df.groupby("Distributor_ID").agg(
