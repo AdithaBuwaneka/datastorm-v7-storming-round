@@ -138,23 +138,33 @@ export default async function DashboardPage() {
                 </a>
               </li>
               <li>
-                <a className="text-primary underline-offset-4 hover:underline" href="/budget">
+                <a className="text-primary underline-offset-4 hover:underline" href="/insights?view=budget">
                   Inspect the LKR 5M trade-spend allocation →
                 </a>
               </li>
               <li>
-                <a className="text-primary underline-offset-4 hover:underline" href="/cooler-roi">
+                <a className="text-primary underline-offset-4 hover:underline" href="/insights?view=cooler-roi">
                   Review the Top-100 cooler deployment ROI →
                 </a>
               </li>
               <li>
-                <a className="text-primary underline-offset-4 hover:underline" href="/dormancy">
+                <a className="text-primary underline-offset-4 hover:underline" href="/insights?view=dormancy">
                   Surface high-risk outlets for sales intervention →
                 </a>
               </li>
               <li>
-                <a className="text-primary underline-offset-4 hover:underline" href="/scorecard">
+                <a className="text-primary underline-offset-4 hover:underline" href="/insights?view=scorecard">
                   Compare distributor operational health →
+                </a>
+              </li>
+              <li>
+                <a className="text-primary underline-offset-4 hover:underline" href="/insights?view=territories">
+                  Explore sales territories on the map →
+                </a>
+              </li>
+              <li>
+                <a className="text-primary underline-offset-4 hover:underline" href="/insights?view=forensics">
+                  Audit data-forensics findings →
                 </a>
               </li>
             </ul>
