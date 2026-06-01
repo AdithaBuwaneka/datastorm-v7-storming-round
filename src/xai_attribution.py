@@ -42,6 +42,7 @@ NUMERIC_FEATURES = [
     "max_consecutive_zeros", "monthly_cv",
     # Master attributes (numeric)
     "Cooler_Count", "outlet_size_score", "outlet_type_multiplier", "has_no_cooler",
+    "replenishment_friction", "high_friction_flag",
     # SKU mix
     "premium_share", "mid_share", "mass_share", "super_premium_share",
     "avg_price_per_liter", "sku_diversity",
@@ -100,9 +101,10 @@ def train_surrogate(X: pd.DataFrame, y: pd.Series) -> xgb.XGBRegressor:
     """
     monotone = []
     for col in X.columns:
-        if col == "Cooler_Count" or col == "active_months":
+        if col in ("Cooler_Count", "active_months"):
             monotone.append(1)
-        elif col == "competitor_density_norm" or col == "has_no_cooler":
+        elif col in ("competitor_density_norm", "has_no_cooler",
+                     "replenishment_friction", "high_friction_flag"):
             monotone.append(-1)
         else:
             monotone.append(0)

@@ -448,6 +448,16 @@ def build_outlet_features(panel: pd.DataFrame,
     feats["climate_jan_humid_pct"] = feats["Province"].map(
         lambda p: config.PROVINCE_CLIMATE_JAN.get(p, {}).get("humidity_pct", 75))
 
+    # Replenishment-friction signal: stockout months as a share of active
+    # months. High values indicate the delivery / refill cycle is failing
+    # the outlet (cooler may be present but going empty between visits),
+    # which is the "cooler replenishment cycle" constraint mentioned by
+    # the brief.
+    active = feats["active_months"].clip(lower=1)
+    feats["replenishment_friction"] = (feats["stockout_flag_sum"] / active).clip(0.0, 1.0)
+    feats["high_friction_flag"] = (feats["replenishment_friction"] >=
+                                     feats["replenishment_friction"].quantile(0.75)).astype(int)
+
     # Normalize POI scores and compute composite spatial demand signal
     poi_raw_cols = [
         "footfall_score",
