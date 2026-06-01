@@ -78,33 +78,35 @@ export default async function OutletsPage({
       ) : (
         <>
           <div
-            className="mt-6 overflow-x-auto rounded-lg border border-border bg-card"
+            className="mt-6 overflow-hidden rounded-lg border border-border bg-card"
             style={{ minHeight: `${PAGE_SIZE * 44 + 56}px` }}
           >
-            <table className="w-full text-sm">
+            <table className="w-full table-fixed text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="whitespace-nowrap px-3 py-2.5">Outlet</th>
-                  <th className="whitespace-nowrap px-3 py-2.5">Type / Size</th>
-                  <th className="hidden whitespace-nowrap px-3 py-2.5 md:table-cell">
+                  <th className="w-[12%] whitespace-nowrap px-3 py-2.5">Outlet</th>
+                  <th className="w-[22%] whitespace-nowrap px-3 py-2.5">
+                    Type / Size
+                  </th>
+                  <th className="hidden w-[12%] whitespace-nowrap px-3 py-2.5 md:table-cell">
                     Province
                   </th>
-                  <th className="hidden whitespace-nowrap px-3 py-2.5 lg:table-cell">
+                  <th className="hidden w-[13%] whitespace-nowrap px-3 py-2.5 lg:table-cell">
                     Distributor
                   </th>
-                  <th className="whitespace-nowrap px-3 py-2.5 text-right">
+                  <th className="w-[16%] whitespace-nowrap px-3 py-2.5 text-right">
                     Predicted Jan 2026
                   </th>
-                  <th className="hidden whitespace-nowrap px-3 py-2.5 text-right xl:table-cell">
+                  <th className="hidden w-[11%] whitespace-nowrap px-3 py-2.5 text-right xl:table-cell">
                     Recent avg
                   </th>
-                  <th className="hidden whitespace-nowrap px-3 py-2.5 text-right sm:table-cell">
+                  <th className="hidden w-[7%] whitespace-nowrap px-3 py-2.5 text-right sm:table-cell">
                     Coolers
                   </th>
-                  <th className="whitespace-nowrap px-3 py-2.5 text-center">
+                  <th className="w-[8%] whitespace-nowrap px-3 py-2.5 text-center">
                     Risk
                   </th>
-                  <th className="px-3 py-2.5" />
+                  <th className="w-[8%] px-3 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
