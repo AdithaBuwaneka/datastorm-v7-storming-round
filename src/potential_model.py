@@ -349,8 +349,14 @@ def compute_phase3_business_formula(
     )[["Distributor_ID", "january_seasonality_multiplier"]]
 
     df = feats.merge(season_for_jan, on="Distributor_ID", how="left").copy()
-    historical_peak = df["monthly_volume_max"].copy()
-    for fallback_col in ("monthly_volume_q95", "monthly_volume_q90"):
+    # Use Q95 of own history as the anchor (robust to outlier months from a single
+    # festival peak or data-entry spike). Fall back to Q90, then max only as a
+    # last resort if quantiles missing for very-short-history outlets.
+    historical_peak = df.get("monthly_volume_q95")
+    if historical_peak is None:
+        historical_peak = df.get("monthly_volume_q90", pd.Series(0.0, index=df.index))
+    historical_peak = historical_peak.copy()
+    for fallback_col in ("monthly_volume_q90", "monthly_volume_max"):
         if fallback_col in df.columns:
             historical_peak = historical_peak.fillna(df[fallback_col])
     historical_peak = historical_peak.fillna(0.0)
@@ -1038,9 +1044,11 @@ def main() -> int:
     if tobit_ok and sfa_ok and phase3_ok and rho_loglin >= config.TOBIT_CONVERGENCE_RHO \
        and rho_tobit >= config.TOBIT_CONVERGENCE_RHO \
        and rho_sfa >= config.TOBIT_CONVERGENCE_RHO:
-        # Peer-Q90 anchors; parametric methods and business formula add bounded signal.
-        final = 0.36 * bounded + 0.18 * loglin_proj + 0.18 * tobit_proj + 0.18 * sfa_proj + 0.10 * phase3_formula
-        print(f"  -> All 5 methods converge; ensemble 0.36/0.18/0.18/0.18/0.10")
+        # Peer-Q90 anchors at 0.40 (its hold-out stability is highest); parametric
+        # methods + business formula share the remaining 0.60 with smaller weight
+        # on Phase 3 (interpretable but lower hold-out ρ vs peer).
+        final = 0.40 * bounded + 0.18 * loglin_proj + 0.18 * tobit_proj + 0.16 * sfa_proj + 0.08 * phase3_formula
+        print(f"  -> All 5 methods converge; ensemble 0.40/0.18/0.18/0.16/0.08")
     elif tobit_ok and rho_loglin >= config.TOBIT_CONVERGENCE_RHO and rho_tobit >= config.TOBIT_CONVERGENCE_RHO:
         final = 0.5 * bounded + 0.25 * loglin_proj + 0.25 * tobit_proj
         print(f"  -> 3 methods converge; 3-way ensemble 0.50/0.25/0.25")

@@ -455,6 +455,10 @@ def build_outlet_features(panel: pd.DataFrame,
         "tourist_score",
         "health_score",
         "competitor_poi_score",
+        "worship_score",
+        "food_pairing_score",
+        "leisure_rec_score",
+        "population_score",
     ]
     for col in poi_raw_cols:
         if col in feats.columns:
@@ -474,14 +478,30 @@ def build_outlet_features(panel: pd.DataFrame,
         feats["is_isolated_market"] = 0
         feats["is_dense_market"] = 0
 
+    # Composite signal: weight categories by their demand relevance to beverages.
+    # Food-service (restaurants/cafes/ice_cream) and population (residential
+    # catchment) are direct demand drivers — added in fix to recover lost signal.
     foot = feats.get("footfall_score_norm", 0.0)
     school = feats.get("school_score_norm", 0.0)
     tourist = feats.get("tourist_score_norm", 0.0)
     health = feats.get("health_score_norm", 0.0)
+    worship = feats.get("worship_score_norm", 0.0)
+    food = feats.get("food_pairing_score_norm", 0.0)
+    leisure = feats.get("leisure_rec_score_norm", 0.0)
+    pop = feats.get("population_score_norm", 0.0)
     diversity = feats.get("poi_diversity_score", 0.0)
+    weights = {
+        "foot": 3.0, "school": 2.0, "tourist": 2.5, "health": 1.0,
+        "worship": 1.5, "food": 3.0, "leisure": 1.5, "pop": 2.5, "diversity": 1.5,
+    }
+    total_w = sum(weights.values())
     feats["spatial_demand_score"] = (
-        foot * 3.0 + school * 2.0 + tourist * 2.5 + health * 1.0 + diversity * 1.5
-    ) / (3.0 + 2.0 + 2.5 + 1.0 + 1.5)
+        foot * weights["foot"] + school * weights["school"]
+        + tourist * weights["tourist"] + health * weights["health"]
+        + worship * weights["worship"] + food * weights["food"]
+        + leisure * weights["leisure"] + pop * weights["pop"]
+        + diversity * weights["diversity"]
+    ) / total_w
 
     print(f"  feature frame shape: {feats.shape}")
     return feats
@@ -610,6 +630,14 @@ def main() -> int:
         "tourist_score_norm",
         "health_score_norm",
         "competitor_poi_score_norm",
+        "worship_score",
+        "worship_score_norm",
+        "food_pairing_score",
+        "food_pairing_score_norm",
+        "leisure_rec_score",
+        "leisure_rec_score_norm",
+        "population_score",
+        "population_score_norm",
         "spatial_demand_score",
         "competitor_density_norm",
         "is_isolated_market",

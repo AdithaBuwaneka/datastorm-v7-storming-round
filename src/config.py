@@ -115,6 +115,8 @@ POI_TAGS = [
 ]
 
 # --- POI category mapping (for distance-decay scores) ---
+# Every tag in POI_TAGS must appear in at least one category so the
+# distance-decay scoring covers the full POI inventory (no orphan tags).
 POI_CATEGORIES = {
     "footfall": [
         ("highway", "bus_stop"),
@@ -122,6 +124,7 @@ POI_CATEGORIES = {
         ("amenity", "taxi"),
         ("railway", "station"),
         ("amenity", "fuel"),
+        ("amenity", "bank"),       # commerce-hub footfall
     ],
     "school": [
         ("amenity", "school"),
@@ -148,6 +151,7 @@ POI_CATEGORIES = {
         ("shop", "general"),
         ("amenity", "marketplace"),
         ("amenity", "market"),
+        ("shop", "alcohol"),       # direct beverage competitor
     ],
     "worship": [
         ("amenity", "place_of_worship"),
@@ -158,6 +162,15 @@ POI_CATEGORIES = {
         ("amenity", "cafe"),
         ("amenity", "fast_food"),
         ("amenity", "food_court"),
+        ("amenity", "ice_cream"),  # beverage co-consumption
+    ],
+    "leisure_rec": [
+        ("leisure", "park"),
+        ("leisure", "fitness_centre"),
+        ("leisure", "stadium"),
+    ],
+    "population": [
+        ("landuse", "residential"),  # catchment-population proxy
     ],
 }
 
@@ -169,6 +182,8 @@ POI_CATEGORY_OUTPUT = {
     "competitor_poi": "competitor_poi_score",
     "worship": "worship_score",
     "food_service": "food_pairing_score",
+    "leisure_rec": "leisure_rec_score",
+    "population": "population_score",
 }
 
 # Distance-decay configuration (meters)
@@ -180,6 +195,8 @@ POI_SEARCH_RADIUS_M = {
     "competitor_poi": 800,
     "worship": 1000,
     "food_service": 300,
+    "leisure_rec": 1500,
+    "population": 1500,
 }
 
 # Gaussian sigma per category (meters)
@@ -190,6 +207,8 @@ POI_SIGMA_M = {
     "health": 400,
     "worship": 300,
     "food_service": 150,
+    "leisure_rec": 500,
+    "population": 600,
 }
 
 # Decay model per category
@@ -201,6 +220,8 @@ POI_DECAY_MODEL = {
     "worship": "gaussian",
     "food_service": "gaussian",
     "competitor_poi": "gravity",
+    "leisure_rec": "gaussian",
+    "population": "gaussian",
 }
 
 # POI search radii (meters) — 4 rings for finer catchment granularity
