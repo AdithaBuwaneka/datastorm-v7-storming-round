@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pandas>=2.0
+numpy>=1.24
+pyarrow>=14.0
+pydantic>=2.5
+python-dotenv>=1.0
+google-generativeai>=0.5

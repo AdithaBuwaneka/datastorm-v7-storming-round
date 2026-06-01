@@ -30,6 +30,24 @@ def _ensure_dirs() -> None:
         summary_path.unlink()
 
 
+def _infer_size_from_cooler(cooler_count: int | float | None) -> str | None:
+    """Infer outlet size from cooler count using conservative thresholds."""
+    if cooler_count is None or pd.isna(cooler_count):
+        return None
+    try:
+        count = int(cooler_count)
+    except (TypeError, ValueError):
+        return None
+
+    if count <= 1:
+        return "Small"
+    if count <= 2:
+        return "Medium"
+    if count <= 4:
+        return "Large"
+    return "Extra Large"
+
+
 # ---------------------------------------------------------------------------
 # Per-dataset cleaning
 # ---------------------------------------------------------------------------
@@ -39,23 +57,15 @@ def clean_outlet_master() -> pd.DataFrame:
     df = pd.read_csv(config.BRONZE / "outlet_master.csv")
     df["Outlet_ID"] = df["Outlet_ID"].astype(str).str.strip()
 
+    raw_size = df["Outlet_Size"].copy()
+    raw_size_str = raw_size.astype(str).str.strip()
+    raw_lower_small = raw_size_str.eq("small")
+
     df = dq.apply_check(dq.check_duplicates, df, ["Outlet_ID"],
                         dataset_name="outlet_master", check_name="duplicates_PK")
     df = dq.apply_check(dq.check_nulls, df,
-                        ["Outlet_ID", "Outlet_Size", "Cooler_Count", "Outlet_Type"],
+                        ["Outlet_ID", "Cooler_Count", "Outlet_Type"],
                         dataset_name="outlet_master", check_name="nulls_mandatory")
-    df = dq.apply_check(dq.check_value_set, df, "Outlet_Size",
-                        config.VALID_OUTLET_SIZES,
-                        dataset_name="outlet_master", check_name="outlet_size_value_set",
-                        case_insensitive=True)
-    # Case-normalise Outlet_Size to canonical title-case (raw has 600 'small' lowercase rows)
-    size_map = {s.lower(): s for s in config.VALID_OUTLET_SIZES}
-    n_size_fixed = int((df["Outlet_Size"] != df["Outlet_Size"].astype(str).str.strip()
-                                                .str.lower().map(size_map)).sum())
-    df["Outlet_Size"] = (df["Outlet_Size"].astype(str).str.strip().str.lower()
-                             .map(size_map).fillna(df["Outlet_Size"]))
-    if n_size_fixed:
-        print(f"  Outlet_Size case-normalised: {n_size_fixed} rows changed to canonical form")
 
     # Cooler_Count integer coercion: quarantine non-integer rows
     coerced = pd.to_numeric(df["Cooler_Count"], errors="coerce")
@@ -73,6 +83,64 @@ def clean_outlet_master() -> pd.DataFrame:
 
     # Forensic: normalize Outlet_Type typos ("Grocry" -> "Grocery", etc.)
     df = fx.normalise_outlet_type(df, "Outlet_Type")
+
+    # Outlet_Size normalization + anomaly handling
+    raw_lower_small = raw_lower_small.reindex(df.index, fill_value=False)
+    size_clean = df["Outlet_Size"].copy()
+    non_null = size_clean.notna()
+    size_clean.loc[non_null] = size_clean.loc[non_null].astype(str).str.strip()
+    df["Outlet_Size"] = size_clean
+
+    # Reclassify lowercase 'small' entries with cooler_count >= 2
+    misclassified_small = raw_lower_small & (df["Cooler_Count"] >= 2)
+    if misclassified_small.any():
+        df.loc[misclassified_small, "Outlet_Size"] = (
+            df.loc[misclassified_small, "Cooler_Count"].map(_infer_size_from_cooler)
+        )
+
+    # Fix remaining lowercase 'small' casing
+    remaining_small = raw_lower_small & ~misclassified_small
+    df.loc[remaining_small, "Outlet_Size"] = "Small"
+
+    # Impute missing Outlet_Size from cooler count
+    null_size_mask = df["Outlet_Size"].isna() | (df["Outlet_Size"].astype(str).str.strip() == "")
+    df["size_imputation_flag"] = ""
+    if null_size_mask.any():
+        df.loc[null_size_mask, "Outlet_Size"] = (
+            df.loc[null_size_mask, "Cooler_Count"].map(_infer_size_from_cooler)
+        )
+        df.loc[null_size_mask, "size_imputation_flag"] = "imputed_from_cooler_count"
+
+    # Standardize casing for any remaining size values
+    size_map = {s.lower(): s for s in config.VALID_OUTLET_SIZES}
+    df["Outlet_Size"] = (df["Outlet_Size"].astype(str).str.strip().str.lower()
+                             .map(size_map).fillna(df["Outlet_Size"]))
+
+    fx.log_outlet_size_adjustments(
+        n_reclassified=int(misclassified_small.sum()),
+        n_imputed=int(null_size_mask.sum()),
+        n_lowercase_total=int(raw_lower_small.sum()),
+    )
+
+    df = dq.apply_check(dq.check_value_set, df, "Outlet_Size",
+                        config.VALID_OUTLET_SIZES,
+                        dataset_name="outlet_master", check_name="outlet_size_value_set",
+                        case_insensitive=False)
+
+    # Derived features for modeling
+    size_score = {"Small": 1, "Medium": 2, "Large": 3, "Extra Large": 4}
+    type_multiplier = {
+        "SMMT": 1.30,
+        "Grocery": 1.20,
+        "Hotel": 1.15,
+        "Eatery": 1.10,
+        "Bakery": 1.05,
+        "Pharmacy": 0.90,
+        "Kiosk": 0.85,
+    }
+    df["outlet_size_score"] = df["Outlet_Size"].map(size_score)
+    df["outlet_type_multiplier"] = df["Outlet_Type"].map(type_multiplier).fillna(1.0)
+    df["has_no_cooler"] = (df["Cooler_Count"] == 0).astype(int)
 
     out = config.SILVER_CLEAN / "outlet_master_clean.parquet"
     df.to_parquet(out, index=False)
@@ -175,6 +243,35 @@ def clean_seasonality() -> pd.DataFrame:
         print(f"  WARN: completeness expected {expected}, got {len(df)} "
               f"(diff={len(df)-expected})")
 
+    seasonality_map = {
+        "Favorable": 1.30,
+        "Moderate": 1.00,
+        "Un-Favorable": 0.70,
+    }
+    df["seasonality_multiplier"] = df["Seasonality_Index"].map(seasonality_map)
+    df["is_extrapolated"] = False
+
+    jan_2026 = []
+    for dist in sorted(config.VALID_DISTRIBUTOR_IDS):
+        label = "Favorable" if dist in {"DIST_S_01", "DIST_S_02"} else "Moderate"
+        jan_2026.append({
+            "Distributor_ID": dist,
+            "Year": 2026,
+            "Month": 1,
+            "Seasonality_Index": label,
+            "seasonality_multiplier": seasonality_map[label],
+            "is_extrapolated": True,
+        })
+    jan_2026_df = pd.DataFrame(jan_2026)
+    df = pd.concat([df, jan_2026_df], ignore_index=True)
+
+    audit = pd.DataFrame(jan_2026)[["Distributor_ID", "Seasonality_Index"]]
+    audit = audit.rename(columns={"Seasonality_Index": "Jan_2026_assumed"})
+    audit["rule_applied"] = "fixed_pattern"
+    audit_out = config.AUDIT / "seasonality_extrapolation.csv"
+    audit.to_csv(audit_out, index=False)
+    print(f"  Jan 2026 seasonality extrapolation saved: {audit_out}")
+
     out = config.SILVER_CLEAN / "seasonality_clean.parquet"
     df.to_parquet(out, index=False)
     print(f"  -> {out}  shape={df.shape}")
@@ -201,8 +298,6 @@ def clean_holidays() -> pd.DataFrame:
     df["Date"] = df["Date_parsed"].dt.tz_convert(None).dt.normalize()
     df = df.drop(columns=["Date_parsed"])
 
-    df = dq.apply_check(dq.check_duplicates, df, ["Date", "Holiday_Type"],
-                        dataset_name="holiday", check_name="duplicates_PK")
     df = dq.apply_check(dq.check_nulls, df, ["Date", "Holiday_Name"],
                         dataset_name="holiday", check_name="nulls_mandatory")
     df = dq.apply_check(dq.check_value_set, df, "Holiday_Type",
@@ -210,10 +305,43 @@ def clean_holidays() -> pd.DataFrame:
                         dataset_name="holiday", check_name="type_value_set",
                         case_insensitive=False)
 
+    # Deduplicate by calendar date with priority by Holiday_Type
+    type_priority = {"Public": 1, "Poya Day": 2, "Mercantile": 3, "Bank": 4}
+    df["type_priority"] = df["Holiday_Type"].map(type_priority).fillna(5)
+    df = df.sort_values(["Date", "type_priority"]).drop_duplicates(subset=["Date"], keep="first")
+    df = df.drop(columns=["type_priority"])
+
+    # Add Jan 2026 holidays
+    jan_2026 = pd.DataFrame([
+        {
+            "Date": pd.Timestamp("2026-01-03"),
+            "Holiday_Name": "Duruthu Full Moon Poya Day",
+            "Holiday_Type": "Poya Day",
+            "is_manually_added": True,
+        },
+        {
+            "Date": pd.Timestamp("2026-01-14"),
+            "Holiday_Name": "Tamil Thai Pongal Day",
+            "Holiday_Type": "Public",
+            "is_manually_added": True,
+        },
+    ])
+    df["is_manually_added"] = False
+    full_df = pd.concat([df, jan_2026], ignore_index=True)
+
+    # Monthly holiday density
+    full_df["year"] = full_df["Date"].dt.year
+    full_df["month"] = full_df["Date"].dt.month
+    holiday_density = (full_df.groupby(["year", "month"]).size()
+                       .reset_index(name="holiday_count"))
+    holiday_density_out = config.AUDIT / "holiday_density_by_month.csv"
+    holiday_density.to_csv(holiday_density_out, index=False)
+    print(f"  Holiday density saved: {holiday_density_out}")
+
     out = config.SILVER_CLEAN / "holiday_clean.parquet"
-    df.to_parquet(out, index=False)
-    print(f"  -> {out}  shape={df.shape}")
-    return df
+    full_df.to_parquet(out, index=False)
+    print(f"  -> {out}  shape={full_df.shape}")
+    return full_df
 
 
 def clean_transactions(master_ids: set[str]) -> pd.DataFrame:

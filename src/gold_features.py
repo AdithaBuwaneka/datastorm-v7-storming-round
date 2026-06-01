@@ -84,13 +84,14 @@ def build_outlet_month_panel(transactions: pd.DataFrame,
 
 
 def compute_competitor_density(coords: pd.DataFrame, master: pd.DataFrame) -> pd.DataFrame:
-    """For each outlet, count number of OTHER outlets within 500m, 1km, 2km.
+    """For each outlet, count number of OTHER outlets within multiple radii.
     Uses BallTree haversine (radians). Captures local beverage-retail competition.
     Also computes competitors of SAME type vs different type.
 
     Returns DataFrame indexed by Outlet_ID with columns:
-      competitors_500m, competitors_1km, competitors_2km
+      competitors_200m, competitors_500m, competitors_1km, competitors_2km
       same_type_competitors_500m, same_type_competitors_1km, same_type_competitors_2km
+      market_saturation_index, is_isolated
     """
     from sklearn.neighbors import BallTree
     EARTH_R = 6_371_000.0
@@ -100,7 +101,12 @@ def compute_competitor_density(coords: pd.DataFrame, master: pd.DataFrame) -> pd
     tree = BallTree(pos_rad, metric="haversine")
 
     out = df[["Outlet_ID", "Outlet_Type"]].copy().reset_index(drop=True)
-    name_map = {500: "competitors_500m", 1000: "competitors_1km", 2000: "competitors_2km"}
+    name_map = {
+        200: "competitors_200m",
+        500: "competitors_500m",
+        1000: "competitors_1km",
+        2000: "competitors_2km",
+    }
     for r_m, col in name_map.items():
         r_rad = r_m / EARTH_R
         counts = tree.query_radius(pos_rad, r=r_rad, count_only=True) - 1  # exclude self
@@ -121,6 +127,14 @@ def compute_competitor_density(coords: pd.DataFrame, master: pd.DataFrame) -> pd
     out["same_type_competitors_500m"] = same_type_counts[500]
     out["same_type_competitors_1km"]  = same_type_counts[1000]
     out["same_type_competitors_2km"]  = same_type_counts[2000]
+
+    # Saturation + isolation indicators
+    out["market_saturation_index"] = (
+        out["competitors_200m"] * 3
+        + out["competitors_500m"] * 2
+        + out["competitors_1km"] * 1
+    ) / 6.0
+    out["is_isolated"] = (out["competitors_1km"] < 3).astype(int)
 
     return out.drop(columns=["Outlet_Type"])
 
@@ -434,6 +448,75 @@ def build_outlet_features(panel: pd.DataFrame,
     feats["climate_jan_humid_pct"] = feats["Province"].map(
         lambda p: config.PROVINCE_CLIMATE_JAN.get(p, {}).get("humidity_pct", 75))
 
+    # Replenishment-friction signal: stockout months as a share of active
+    # months. High values indicate the delivery / refill cycle is failing
+    # the outlet (cooler may be present but going empty between visits),
+    # which is the "cooler replenishment cycle" constraint mentioned by
+    # the brief.
+    active = feats["active_months"].clip(lower=1)
+    feats["replenishment_friction"] = (feats["stockout_flag_sum"] / active).clip(0.0, 1.0)
+    feats["high_friction_flag"] = (feats["replenishment_friction"] >=
+                                     feats["replenishment_friction"].quantile(0.75)).astype(int)
+
+    # Normalize POI scores and compute composite spatial demand signal
+    poi_raw_cols = [
+        "footfall_score",
+        "school_score",
+        "tourist_score",
+        "health_score",
+        "competitor_poi_score",
+        "worship_score",
+        "food_pairing_score",
+        "leisure_rec_score",
+        "population_score",
+    ]
+    for col in poi_raw_cols:
+        if col in feats.columns:
+            feats[col] = feats[col].fillna(0.0)
+            max_val = float(feats[col].max()) if len(feats) else 0.0
+            feats[f"{col}_norm"] = feats[col] / max_val if max_val > 0 else 0.0
+
+    if "competitors_1km" in feats.columns:
+        max_comp = float(feats["competitors_1km"].max()) if len(feats) else 0.0
+        feats["competitor_density_norm"] = (
+            feats["competitors_1km"] / max_comp if max_comp > 0 else 0.0
+        )
+        feats["is_isolated_market"] = (feats["competitors_1km"] < 3).astype(int)
+        feats["is_dense_market"] = (feats["competitors_1km"] >= 15).astype(int)
+    else:
+        feats["competitor_density_norm"] = 0.0
+        feats["is_isolated_market"] = 0
+        feats["is_dense_market"] = 0
+
+    # Composite signal: weight categories by their demand relevance to beverages.
+    # Food-service (restaurants/cafes/ice_cream) and population (residential
+    # catchment) are direct demand drivers — added in fix to recover lost signal.
+    foot = feats.get("footfall_score_norm", 0.0)
+    school = feats.get("school_score_norm", 0.0)
+    tourist = feats.get("tourist_score_norm", 0.0)
+    health = feats.get("health_score_norm", 0.0)
+    worship = feats.get("worship_score_norm", 0.0)
+    food = feats.get("food_pairing_score_norm", 0.0)
+    leisure = feats.get("leisure_rec_score_norm", 0.0)
+    pop = feats.get("population_score_norm", 0.0)
+    diversity = feats.get("poi_diversity_score", 0.0)
+    weights = {
+        "foot": 3.0, "school": 2.0, "tourist": 2.5, "health": 1.0,
+        "worship": 1.5, "food": 3.0, "leisure": 1.5, "pop": 2.5, "diversity": 1.5,
+    }
+    total_w = sum(weights.values())
+    feats["spatial_demand_score"] = (
+        foot * weights["foot"] + school * weights["school"]
+        + tourist * weights["tourist"] + health * weights["health"]
+        + worship * weights["worship"] + food * weights["food"]
+        + leisure * weights["leisure"] + pop * weights["pop"]
+        + diversity * weights["diversity"]
+    ) / total_w
+
+    # Market structure (HHI, territory radius, type-weighted pressure)
+    from src import competition_features as cf
+    feats = cf.add_features(feats, market_share_col="monthly_volume_mean")
+
     print(f"  feature frame shape: {feats.shape}")
     return feats
 
@@ -546,6 +629,46 @@ def main() -> int:
     feats.to_parquet(feats_out, index=False)
     print(f"  -> {feats_out}  shape={feats.shape}")
     print(f"  columns: {feats.shape[1]} total")
+
+    # 9. Compact POI feature frame for modeling / export
+    poi_cols = [
+        "Outlet_ID",
+        "footfall_score",
+        "school_score",
+        "tourist_score",
+        "health_score",
+        "competitor_poi_score",
+        "poi_diversity_score",
+        "footfall_score_norm",
+        "school_score_norm",
+        "tourist_score_norm",
+        "health_score_norm",
+        "competitor_poi_score_norm",
+        "worship_score",
+        "worship_score_norm",
+        "food_pairing_score",
+        "food_pairing_score_norm",
+        "leisure_rec_score",
+        "leisure_rec_score_norm",
+        "population_score",
+        "population_score_norm",
+        "spatial_demand_score",
+        "competitor_density_norm",
+        "is_isolated_market",
+        "is_dense_market",
+        "hhi_1500m",
+        "territory_radius_m",
+        "type_weighted_pressure",
+        "market_concentrated_flag",
+        "market_fragmented_flag",
+        "isolated_territory_flag",
+    ]
+    poi_cols = [c for c in poi_cols if c in feats.columns]
+    poi_out = feats.reindex(columns=poi_cols).copy().fillna(0.0)
+    poi_out["internal_competitor_count"] = feats.get("competitors_1km", 0)
+    poi_out_path = config.GOLD / "poi_features.csv"
+    poi_out.to_csv(poi_out_path, index=False)
+    print(f"  -> {poi_out_path}  rows={len(poi_out):,}")
 
     # Quick sanity print
     print("\nQuick feature sanity (first 3 outlets):")
