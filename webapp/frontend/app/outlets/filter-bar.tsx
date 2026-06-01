@@ -33,7 +33,7 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
     Array.from(sp.entries()).filter(([k]) => k !== "page").length > 0;
 
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card px-3 py-2">
+    <div className="flex items-end gap-2 overflow-x-auto rounded-lg border border-border bg-card px-3 py-2">
       <Field label="Search">
         <form
           onSubmit={(e) => {
@@ -42,7 +42,7 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
           }}
         >
           <Input
-            className="h-8 w-36 text-xs"
+            className="h-8 w-32 text-xs"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="OUT_12345"
@@ -81,7 +81,7 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
         onChange={(v) => push("risk_band", v)}
       />
 
-      <div className="ml-auto flex h-8 min-w-[110px] items-center justify-end gap-2">
+      <div className="ml-auto flex h-8 shrink-0 items-center gap-2 self-end">
         <span
           className={`text-xs text-muted-foreground transition-opacity ${
             pending ? "opacity-100" : "opacity-0"
@@ -111,7 +111,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex shrink-0 flex-col gap-0.5">
       <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </label>
@@ -134,7 +134,7 @@ function SelectField({
   return (
     <Field label={label}>
       <Select
-        className="h-8 w-32 text-xs"
+        className="h-8 w-28 text-xs"
         defaultValue={defaultValue}
         onChange={(e) => onChange(e.target.value)}
       >
