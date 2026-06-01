@@ -58,12 +58,26 @@ export default async function InsightsPage({
       <PageHeader title={meta.title} description={meta.desc} />
       <InsightTabs active={view} />
 
-      {view === "budget" && <BudgetView />}
-      {view === "cooler-roi" && <CoolerRoiView />}
-      {view === "dormancy" && <DormancyView />}
-      {view === "scorecard" && <ScorecardView />}
-      {view === "territories" && <TerritoriesView />}
-      {view === "forensics" && <ForensicsView />}
+      {(() => {
+        const rawPage = Array.isArray(searchParams.page)
+          ? searchParams.page[0]
+          : searchParams.page;
+        const page = Math.max(1, Number(rawPage) || 1);
+        switch (view) {
+          case "budget":
+            return <BudgetView />;
+          case "cooler-roi":
+            return <CoolerRoiView page={page} />;
+          case "dormancy":
+            return <DormancyView page={page} />;
+          case "scorecard":
+            return <ScorecardView />;
+          case "territories":
+            return <TerritoriesView page={page} />;
+          case "forensics":
+            return <ForensicsView />;
+        }
+      })()}
     </>
   );
 }

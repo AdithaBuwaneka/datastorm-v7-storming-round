@@ -12,8 +12,11 @@ import {
 import { KpiTile } from "@/components/kpi-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
 
-export async function CoolerRoiView() {
+const PAGE_SIZE = 20;
+
+export async function CoolerRoiView({ page = 1 }: { page?: number }) {
   const [summary, top100] = await Promise.all([
     api.coolerRoiSummary(),
     api.coolerRoiTop100(),
@@ -22,6 +25,11 @@ export async function CoolerRoiView() {
   const netValue =
     (summary.top100_24mo_margin_LKR ?? 0) -
     (summary.top100_total_capex_LKR ?? 0);
+
+  const totalPages = Math.max(1, Math.ceil(top100.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const slice = top100.slice(start, start + PAGE_SIZE);
 
   return (
     <>
@@ -80,7 +88,7 @@ export async function CoolerRoiView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {top100.map((r: any) => (
+              {slice.map((r: any) => (
                 <tr key={r.Outlet_ID} className="hover:bg-muted/30">
                   <td className="px-2 py-2 font-mono text-xs">{r.Outlet_ID}</td>
                   <td className="px-2 py-2">{r.Outlet_Type}</td>
@@ -114,6 +122,13 @@ export async function CoolerRoiView() {
               ))}
             </tbody>
           </table>
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            totalRows={top100.length}
+            label="outlets"
+            pageHref={(p) => buildPageHref("/insights", "cooler-roi", p)}
+          />
         </CardContent>
       </Card>
     </>

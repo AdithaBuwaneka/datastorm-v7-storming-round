@@ -25,7 +25,8 @@ const ICONS: Record<ViewKey, typeof Wallet> = {
 export function InsightTabs({ active }: { active: ViewKey }) {
   const sp = useSearchParams();
   const link = (v: string) => {
-    const next = new URLSearchParams(sp?.toString() ?? "");
+    // Switching tabs resets pagination so we land on row 1 of the new view
+    const next = new URLSearchParams();
     next.set("view", v);
     return `/insights?${next.toString()}`;
   };

@@ -12,12 +12,20 @@ import {
 import { KpiTile } from "@/components/kpi-tile";
 import { RiskBadge } from "@/components/risk-badge";
 import { Button } from "@/components/ui/button";
+import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
 
-export async function DormancyView() {
+const PAGE_SIZE = 20;
+
+export async function DormancyView({ page = 1 }: { page?: number }) {
   const [bands, top] = await Promise.all([
     api.dormancyBands(),
     api.dormancyTop(200),
   ]);
+
+  const totalPages = Math.max(1, Math.ceil(top.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const slice = top.slice(start, start + PAGE_SIZE);
 
   return (
     <>
@@ -72,7 +80,7 @@ export async function DormancyView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {top.map((r: any) => (
+              {slice.map((r: any) => (
                 <tr key={r.Outlet_ID} className="hover:bg-muted/30">
                   <td className="px-2 py-2 font-mono text-xs">{r.Outlet_ID}</td>
                   <td className="px-2 py-2">{r.Province}</td>
@@ -101,6 +109,13 @@ export async function DormancyView() {
               ))}
             </tbody>
           </table>
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            totalRows={top.length}
+            label="at-risk outlets"
+            pageHref={(p) => buildPageHref("/insights", "dormancy", p)}
+          />
         </CardContent>
       </Card>
     </>

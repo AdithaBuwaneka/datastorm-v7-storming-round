@@ -8,9 +8,16 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { TerritoryMap } from "./territory-map";
+import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
 
-export async function TerritoriesView() {
+const PAGE_SIZE = 20;
+
+export async function TerritoriesView({ page = 1 }: { page?: number }) {
   const rows = await api.territories();
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * PAGE_SIZE;
+  const slice = rows.slice(start, start + PAGE_SIZE);
   return (
     <>
       <Card className="mb-6">
@@ -50,7 +57,7 @@ export async function TerritoriesView() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {rows.map((r: any) => (
+              {slice.map((r: any) => (
                 <tr key={r.cluster_id} className="hover:bg-muted/30">
                   <td className="px-2 py-2 font-mono">#{r.cluster_id}</td>
                   <td className="px-2 py-2 text-right">{fmtNumber(r.n_outlets)}</td>
@@ -75,6 +82,13 @@ export async function TerritoriesView() {
               ))}
             </tbody>
           </table>
+          <PaginationBar
+            page={safePage}
+            totalPages={totalPages}
+            totalRows={rows.length}
+            label="territories"
+            pageHref={(p) => buildPageHref("/insights", "territories", p)}
+          />
         </CardContent>
       </Card>
     </>
