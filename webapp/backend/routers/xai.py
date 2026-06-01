@@ -6,8 +6,8 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 
-from ..services.data_loader import get_cache
-from ..services.gemini_xai import generate_narrative
+from services.data_loader import get_cache
+from services.gemini_xai import generate_narrative
 
 
 router = APIRouter(prefix="/api/xai", tags=["xai"])
