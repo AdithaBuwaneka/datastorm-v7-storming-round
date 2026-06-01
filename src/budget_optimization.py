@@ -1,43 +1,24 @@
-"""Round-2 Deliverable: LKR 5M Western Province trade-spend allocation.
+"""Western Province trade-spend allocation under a fixed LKR 5M budget.
 
-Problem (verbatim from Round-2 brief):
-    "Assume the company has allocated a fixed promotional budget of LKR 5
-    million for the Western Province for January 2026. ... distribute among
-    distributors and outlets ... maximize the additional sales volume gained
-    compared to normal historical sales patterns, while ensuring the total
-    spending does not exceed the LKR 5 million budget."
+Concave diminishing-returns allocation:
 
-Mathematical formulation (concave diminishing-returns):
+    maximise   sum_i  kappa_i * sqrt(x_i)
+    subject to sum_i  x_i  <=  B           # B = LKR 5,000,000
+               0 <=  x_i  <=  x_max        # per-outlet cap
+               i in Western Province
 
-    maximise   sum_i  kappa_i * sqrt(x_i)        # Liters of expected uplift
-    subject to sum_i  x_i  <=  B                 # B = LKR 5,000,000
-               0 <=  x_i  <=  x_max              # per-outlet cap
-               i in Western_Province_outlets     # ~8,989 outlets
+with kappa_i = uplift_i * cooler_priority_i * (1 + spatial_lift_i)
+              / (1 + competitive_drag_i).
 
-Where:
-    kappa_i  =  uplift_potential_i * cooler_priority_i * (1 + spatial_signal_i)
-                / (1 + competitive_drag_i)
+The square-root utility is a standard marketing-mix-model response shape
+(Hanssens, Parsons & Schultz 2001; Jin et al 2017) and admits a closed-form
+water-filling solution.
 
-    uplift_potential_i  =  predicted_jan_2026_i - observed_recent_monthly_i
-
-The square-root utility encodes diminishing marginal return on promotional
-spend (a well-established assumption in marketing-mix / media-mix models —
-e.g., Hanssens, Parsons & Schultz 2001; Jin et al 2017). It also yields a
-closed-form water-filling solution that is fast, deterministic, and
-interpretable.
-
-Closed-form (unconstrained):  x*_i  proportional to  kappa_i^2
-With per-outlet caps:         iterative water-filling.
-
-Output:
-    outputs/DataX_budget_allocations.csv
-        columns: Outlet_ID, Trade_Spend_LKR
-
-Audit:
-    outputs/audit/budget_allocation_summary.csv
-        per-distributor totals + per-segment (cooler-priority bucket) totals
+Outputs:
+    outputs/DataX_budget_allocations.csv (Outlet_ID, Trade_Spend_LKR)
+    outputs/audit/budget_allocation_by_distributor.csv
+    outputs/audit/budget_allocation_by_segment.csv
     outputs/audit/budget_allocation_top50.csv
-        top-50 outlets by allocated spend
 """
 from __future__ import annotations
 
@@ -192,11 +173,11 @@ def write_outputs(df: pd.DataFrame) -> None:
     config.OUTPUTS.mkdir(parents=True, exist_ok=True)
     config.AUDIT.mkdir(parents=True, exist_ok=True)
 
-    # Deliverable: just Outlet_ID + Trade_Spend_LKR
-    deliv = df[["Outlet_ID", "Trade_Spend_LKR"]].sort_values("Outlet_ID")
-    deliv_path = config.OUTPUTS / f"{config.TEAM_NAME}_budget_allocations.csv"
-    deliv.to_csv(deliv_path, index=False)
-    print(f"  Deliverable: {deliv_path}  shape={deliv.shape}")
+    # Output CSV: Outlet_ID + allocated Trade_Spend_LKR
+    out = df[["Outlet_ID", "Trade_Spend_LKR"]].sort_values("Outlet_ID")
+    out_path = config.OUTPUTS / f"{config.TEAM_NAME}_budget_allocations.csv"
+    out.to_csv(out_path, index=False)
+    print(f"  Output: {out_path}  shape={out.shape}")
 
     # Audit: per-distributor summary
     by_dist = df.groupby("Distributor_ID").agg(
@@ -239,7 +220,7 @@ def write_outputs(df: pd.DataFrame) -> None:
 
 def main() -> None:
     print("\n" + "="*70)
-    print("Round-2 Phase 2: LKR 5M Western Province trade-spend allocation")
+    print("Western Province trade-spend allocation (LKR 5M)")
     print("="*70)
 
     feats = pd.read_parquet(config.GOLD / "outlet_features.parquet")

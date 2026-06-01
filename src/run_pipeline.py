@@ -7,7 +7,7 @@ Runs the data + modeling pipeline from raw ingest to final predictions:
   Phase 3  POI scraping (Overpass) + BallTree per-outlet counts
   Phase 4  Gold features (outlet-month panel + per-outlet features)
   Phase 5  Potential modeling (peer-Q90 + cross-check + validation)
-  Phase 6  Round-2 LKR 5M Western Province budget allocation
+  Phase 6  Western Province trade-spend allocation (LKR 5M)
 
 Each phase's main() is invoked in order. Re-running is idempotent: bronze
 overwrites with same bytes; silver wipes the quarantine summary; POI scraping
@@ -41,7 +41,7 @@ PHASES = [
     ("POI scraping",            poi_scraper.main),
     ("Gold features",           gold_features.main),
     ("Potential modeling",      potential_model.main),
-    ("Budget optimisation (LKR 5M Western)", _wrap(budget_optimization.main)),
+    ("Budget allocation (Western Province)", _wrap(budget_optimization.main)),
 ]
 
 
@@ -60,7 +60,7 @@ def main() -> int:
         print(f"-- {label} OK ({elapsed:.1f}s)")
     print("=" * 70)
     print(f"Pipeline complete in {time.time() - total_start:.1f}s")
-    print(f"Deliverables:")
+    print(f"Outputs:")
     print(f"  outputs/DataX_predictions.csv")
     print(f"  outputs/DataX_budget_allocations.csv")
     return 0

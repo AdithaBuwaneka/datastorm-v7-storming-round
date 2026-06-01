@@ -314,10 +314,12 @@ def compute_phase3_business_formula(
     jan_2026_holidays: pd.DataFrame,
     historical_jan_holidays_mean: float,
 ) -> pd.Series:
-    """Auditable benchmark matching the Round-2 Phase 3 formula.
+    """Auditable benchmark formula used as an independent cross-check on the
+    censored-demand peer-Q90 anchor:
 
-    This is a cross-check, not a replacement for the censored-demand framework:
-    historical peak x type/size x Jan seasonality x POI lift x competition drag.
+        historical peak (Q95) x type/size x Jan seasonality x holiday
+                              x (1 + alpha * spatial_signal)
+                              x 1 / (1 + beta * competitor_density)
     """
     size_mult = {
         "Small": 0.90,

@@ -9,5 +9,8 @@ matplotlib>=3.7
 seaborn>=0.12
 openpyxl>=3.1
 tqdm>=4.65
+# XAI attribution + counterfactual reasoning
+xgboost>=2.0
+shap>=0.45
 # Optional (only needed for notebooks/00_demo_end_to_end.ipynb):
 #   pip install jupyter
