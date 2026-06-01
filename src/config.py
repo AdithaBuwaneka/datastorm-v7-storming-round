@@ -59,11 +59,11 @@ VALID_HOLIDAY_TYPES = {"Public", "Bank", "Poya Day", "Mercantile"}
 # Outlet sizes (per codebook)
 VALID_OUTLET_SIZES = {"Small", "Medium", "Large", "Extra Large"}
 
-# --- POI tags for Overpass (26 tags, FMCG-beverage industry-relevant) ---
+# --- POI tags for Overpass (FMCG-beverage industry-relevant) ---
 POI_TAGS = [
     # Direct beverage-consumption venues (industry-critical)
     ("amenity", "cafe"),            # coffee/tea shops
-    ("amenity", "fast_food"),       # KFC, McDonald's, quick eats
+    ("amenity", "fast_food"),       # quick eats
     ("amenity", "restaurant"),      # full-service
     ("amenity", "food_court"),      # mall food courts
     ("amenity", "ice_cream"),       # beverage co-consumption
@@ -81,28 +81,127 @@ POI_TAGS = [
 
     # Transit / commerce hubs
     ("highway", "bus_stop"),
+    ("amenity", "bus_station"),
+    ("amenity", "taxi"),
+    ("railway", "station"),
     ("amenity", "marketplace"),
+    ("amenity", "market"),
     ("amenity", "fuel"),
     ("amenity", "bank"),
 
     # Retail competition / co-located
     ("shop",    "supermarket"),
     ("shop",    "convenience"),
+    ("shop",    "general"),
     ("shop",    "alcohol"),
 
     # Community gatherings (event-driven beverage demand)
     ("amenity", "place_of_worship"),
+    ("historic", "temple"),
     ("leisure", "park"),
     ("leisure", "fitness_centre"),  # sports/energy drink demand
     ("leisure", "stadium"),         # event peak demand
 
     # Tourism (urban + tourist-area context)
     ("tourism", "hotel"),
+    ("tourism", "guest_house"),
     ("tourism", "attraction"),
+    ("tourism", "viewpoint"),
+    ("leisure", "beach_resort"),
+    ("natural", "beach"),
 
     # Population proxy
     ("landuse", "residential"),     # catchment population indicator
 ]
+
+# --- POI category mapping (for distance-decay scores) ---
+POI_CATEGORIES = {
+    "footfall": [
+        ("highway", "bus_stop"),
+        ("amenity", "bus_station"),
+        ("amenity", "taxi"),
+        ("railway", "station"),
+        ("amenity", "fuel"),
+    ],
+    "school": [
+        ("amenity", "school"),
+        ("amenity", "university"),
+        ("amenity", "college"),
+        ("amenity", "kindergarten"),
+    ],
+    "tourist": [
+        ("tourism", "hotel"),
+        ("tourism", "guest_house"),
+        ("tourism", "attraction"),
+        ("tourism", "viewpoint"),
+        ("leisure", "beach_resort"),
+        ("natural", "beach"),
+    ],
+    "health": [
+        ("amenity", "hospital"),
+        ("amenity", "clinic"),
+        ("amenity", "pharmacy"),
+    ],
+    "competitor_poi": [
+        ("shop", "supermarket"),
+        ("shop", "convenience"),
+        ("shop", "general"),
+        ("amenity", "marketplace"),
+        ("amenity", "market"),
+    ],
+    "worship": [
+        ("amenity", "place_of_worship"),
+        ("historic", "temple"),
+    ],
+    "food_service": [
+        ("amenity", "restaurant"),
+        ("amenity", "cafe"),
+        ("amenity", "fast_food"),
+        ("amenity", "food_court"),
+    ],
+}
+
+POI_CATEGORY_OUTPUT = {
+    "footfall": "footfall_score",
+    "school": "school_score",
+    "tourist": "tourist_score",
+    "health": "health_score",
+    "competitor_poi": "competitor_poi_score",
+    "worship": "worship_score",
+    "food_service": "food_pairing_score",
+}
+
+# Distance-decay configuration (meters)
+POI_SEARCH_RADIUS_M = {
+    "footfall": 500,
+    "school": 1000,
+    "tourist": 2000,
+    "health": 1000,
+    "competitor_poi": 800,
+    "worship": 1000,
+    "food_service": 300,
+}
+
+# Gaussian sigma per category (meters)
+POI_SIGMA_M = {
+    "footfall": 150,
+    "school": 400,
+    "tourist": 1000,
+    "health": 400,
+    "worship": 300,
+    "food_service": 150,
+}
+
+# Decay model per category
+POI_DECAY_MODEL = {
+    "footfall": "gaussian",
+    "school": "gaussian",
+    "tourist": "gaussian",
+    "health": "gaussian",
+    "worship": "gaussian",
+    "food_service": "gaussian",
+    "competitor_poi": "gravity",
+}
 
 # POI search radii (meters) — 4 rings for finer catchment granularity
 POI_RADII_M = [500, 1000, 2000, 5000]

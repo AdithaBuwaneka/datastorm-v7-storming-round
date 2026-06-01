@@ -40,6 +40,43 @@ from scipy.stats import spearmanr
 from src import config
 
 
+SPATIAL_NUMERIC_FEATURES = [
+    "footfall_score_norm",
+    "tourist_score_norm",
+    "competitor_density_norm",
+    "spatial_demand_score",
+    "competitors_1km",
+]
+
+SKU_NUMERIC_FEATURES = [
+    "premium_share",
+    "mass_share",
+    "avg_price_per_liter",
+    "sku_diversity",
+]
+
+CLIMATE_NUMERIC_FEATURES = [
+    "climate_jan_temp_c",
+    "climate_jan_humid_pct",
+]
+
+MAX_TOBIT_FIT_ROWS = 300_000
+MAX_SFA_FIT_ROWS = 120_000
+RANDOM_SEED = 42
+
+
+def _feature_columns_available(df: pd.DataFrame, candidates: list[str]) -> list[str]:
+    return [c for c in candidates if c in df.columns]
+
+
+def _sample_for_mle(df: pd.DataFrame, max_rows: int, label: str) -> pd.DataFrame:
+    if len(df) <= max_rows:
+        return df
+    sampled = df.sample(n=max_rows, random_state=RANDOM_SEED)
+    print(f"  {label}: fitting on deterministic sample {len(sampled):,}/{len(df):,} rows")
+    return sampled
+
+
 # ---------------------------------------------------------------------------
 # Step A — Constraint detection
 # ---------------------------------------------------------------------------
@@ -270,6 +307,102 @@ def apply_sanity_bounds(predictions: pd.Series,
 # Hold-Out Validation — predict Jan 2025 from 2023+2024, compare to actuals
 # ---------------------------------------------------------------------------
 
+def compute_phase3_business_formula(
+    feats: pd.DataFrame,
+    seasonality_extrap: pd.DataFrame,
+    seasonality_mult: pd.DataFrame,
+    jan_2026_holidays: pd.DataFrame,
+    historical_jan_holidays_mean: float,
+) -> pd.Series:
+    """Auditable benchmark matching the Round-2 Phase 3 formula.
+
+    This is a cross-check, not a replacement for the censored-demand framework:
+    historical peak x type/size x Jan seasonality x POI lift x competition drag.
+    """
+    size_mult = {
+        "Small": 0.90,
+        "Medium": 1.00,
+        "Large": 1.12,
+        "Extra Large": 1.25,
+    }
+    type_mult = {
+        "SMMT": 1.30,
+        "Grocery": 1.20,
+        "Hotel": 1.15,
+        "Eatery": 1.10,
+        "Bakery": 1.05,
+        "Pharmacy": 0.90,
+        "Kiosk": 0.85,
+    }
+
+    season_lookup = seasonality_extrap[["Distributor_ID", "Jan_2026_assumed"]]
+    season_mult_long = seasonality_mult.melt(
+        id_vars="Distributor_ID",
+        var_name="Seasonality_Index",
+        value_name="january_seasonality_multiplier",
+    )
+    season_for_jan = season_lookup.merge(
+        season_mult_long,
+        left_on=["Distributor_ID", "Jan_2026_assumed"],
+        right_on=["Distributor_ID", "Seasonality_Index"],
+        how="left",
+    )[["Distributor_ID", "january_seasonality_multiplier"]]
+
+    df = feats.merge(season_for_jan, on="Distributor_ID", how="left").copy()
+    historical_peak = df["monthly_volume_max"].copy()
+    for fallback_col in ("monthly_volume_q95", "monthly_volume_q90"):
+        if fallback_col in df.columns:
+            historical_peak = historical_peak.fillna(df[fallback_col])
+    historical_peak = historical_peak.fillna(0.0)
+    spatial_signal = df.get("spatial_demand_score", df.get("footfall_score_norm", 0.0))
+    if not isinstance(spatial_signal, pd.Series):
+        spatial_signal = pd.Series(float(spatial_signal), index=df.index)
+    spatial_signal = spatial_signal.fillna(0.0).clip(0.0, 1.0)
+
+    competitor_density = df.get("competitor_density_norm", 0.0)
+    if not isinstance(competitor_density, pd.Series):
+        competitor_density = pd.Series(float(competitor_density), index=df.index)
+    competitor_density = competitor_density.fillna(0.0).clip(lower=0.0)
+
+    holiday_mult = 1.0
+    if historical_jan_holidays_mean > 0:
+        n_jan_2026 = jan_2026_holidays["Date"].nunique()
+        holiday_mult = 1.0 + 0.05 * (n_jan_2026 - historical_jan_holidays_mean) / historical_jan_holidays_mean
+        holiday_mult = float(np.clip(holiday_mult, 0.95, 1.10))
+
+    alpha = 0.30
+    beta = 0.25
+    outlet_type_multiplier = df["Outlet_Type"].map(type_mult).fillna(1.0)
+    size_multiplier = df["Outlet_Size"].map(size_mult).fillna(1.0)
+    season_multiplier = df["january_seasonality_multiplier"].fillna(1.0)
+
+    formula = (
+        historical_peak
+        * outlet_type_multiplier
+        * size_multiplier
+        * season_multiplier
+        * holiday_mult
+        * (1.0 + alpha * spatial_signal)
+        * (1.0 / (1.0 + beta * competitor_density))
+    ).clip(lower=0.1)
+
+    audit = pd.DataFrame({
+        "Outlet_ID": df["Outlet_ID"],
+        "historical_peak": historical_peak,
+        "outlet_type_multiplier": outlet_type_multiplier,
+        "size_multiplier": size_multiplier,
+        "january_seasonality_multiplier": season_multiplier,
+        "holiday_multiplier": holiday_mult,
+        "spatial_demand_score": spatial_signal,
+        "competitor_density_norm": competitor_density,
+        "phase3_formula_potential": formula,
+    })
+    out = config.AUDIT / "phase3_business_formula.csv"
+    audit.to_csv(out, index=False)
+    print(f"  Phase 3 business-formula audit saved: {out}")
+    return pd.Series(formula.values, index=df["Outlet_ID"], name="phase3_formula_potential")
+
+
 def holdout_validation_jan_2025(panel: pd.DataFrame, feats: pd.DataFrame) -> dict:
     """Pseudo-validation: use only 2023+2024 history to compute peer-Q90 and predict
     Jan 2025 monthly volume. Compare to actual Jan 2025 volume for unconstrained
@@ -363,28 +496,30 @@ def fit_sfa(panel: pd.DataFrame, feats: pd.DataFrame) -> pd.Series:
 
     # Build dataset
     p = panel.copy()
-    need = [c for c in ["Outlet_Type", "Outlet_Size", "Province", "poi_tier",
-                        "Latitude", "Longitude", "poi_total_2km",
-                        "premium_share", "mass_share", "avg_price_per_liter",
-                        "sku_diversity", "competitors_1km",
-                        "climate_jan_temp_c", "climate_jan_humid_pct"]
+    feature_candidates = [
+        "Outlet_Type", "Outlet_Size", "Province", "poi_tier",
+        "Latitude", "Longitude", "poi_total_2km",
+    ] + SKU_NUMERIC_FEATURES + SPATIAL_NUMERIC_FEATURES + CLIMATE_NUMERIC_FEATURES
+    need = [c for c in feature_candidates
             if c not in p.columns]
     if need:
         p = p.merge(feats[["Outlet_ID"] + [c for c in need if c in feats.columns]],
                     on="Outlet_ID", how="left")
 
-    # Use only positive monthly_volume observations
-    p = p[p["monthly_volume"] > 0].copy()
-    y = np.log(p["monthly_volume"].values)
+    # Use only positive monthly_volume observations; fit on a deterministic
+    # sample to keep SFA MLE tractable while predicting all outlets below.
+    p_all = p[p["monthly_volume"] > 0].copy()
+    p_fit = _sample_for_mle(p_all, MAX_SFA_FIT_ROWS, "SFA")
+    y = np.log(p_fit["monthly_volume"].values)
 
-    cat_cols = [c for c in ["Outlet_Type", "Outlet_Size", "Province"] if c in p.columns]
-    num_cols = [c for c in ["Cooler_Count", "poi_tier", "poi_total_2km",
-                            "Latitude", "Longitude", "premium_share", "mass_share",
-                            "avg_price_per_liter", "sku_diversity",
-                            "competitors_1km", "climate_jan_temp_c",
-                            "climate_jan_humid_pct"] if c in p.columns]
-    X_cat = pd.get_dummies(p[cat_cols], drop_first=True).astype(float)
-    X_num = p[num_cols].astype(float).fillna(0)
+    cat_cols = [c for c in ["Outlet_Type", "Outlet_Size", "Province"] if c in p_fit.columns]
+    num_cols = _feature_columns_available(
+        p_fit,
+        ["Cooler_Count", "poi_tier", "poi_total_2km", "Latitude", "Longitude"]
+        + SKU_NUMERIC_FEATURES + SPATIAL_NUMERIC_FEATURES + CLIMATE_NUMERIC_FEATURES,
+    )
+    X_cat = pd.get_dummies(p_fit[cat_cols], drop_first=True).astype(float)
+    X_num = p_fit[num_cols].astype(float).fillna(0)
     X = pd.concat([X_cat, X_num], axis=1)
     X.insert(0, "const", 1.0)
     X_arr = X.values
@@ -421,9 +556,9 @@ def fit_sfa(panel: pd.DataFrame, feats: pd.DataFrame) -> pd.Series:
     beta_hat = res.x[:k]
 
     # Predict frontier per outlet: exp(X mean β)
-    feat_means = (p.groupby("Outlet_ID")[num_cols].mean()
+    feat_means = (p_all.groupby("Outlet_ID")[num_cols].mean()
                     .reindex(feats["Outlet_ID"])
-                    .fillna(p[num_cols].mean()))
+                    .fillna(p_all[num_cols].mean()))
     cat_per_outlet = feats.set_index("Outlet_ID")[cat_cols]
     Xo_cat = pd.get_dummies(cat_per_outlet, drop_first=True).astype(float) \
                 .reindex(columns=X_cat.columns, fill_value=0.0)
@@ -451,27 +586,31 @@ def fit_tobit_mle(panel: pd.DataFrame, feats: pd.DataFrame) -> pd.Series:
     from scipy.stats import norm
 
     p = panel.copy()
-    need = [c for c in ["Outlet_Type", "Outlet_Size", "Province", "poi_tier",
-                        "Latitude", "Longitude", "poi_total_2km",
-                        "premium_share", "mass_share", "avg_price_per_liter",
-                        "sku_diversity"]
+    feature_candidates = [
+        "Outlet_Type", "Outlet_Size", "Province", "poi_tier",
+        "Latitude", "Longitude", "poi_total_2km",
+    ] + SKU_NUMERIC_FEATURES + SPATIAL_NUMERIC_FEATURES
+    need = [c for c in feature_candidates
             if c not in p.columns]
     if need:
         p = p.merge(feats[["Outlet_ID"] + [c for c in need if c in feats.columns]],
                     on="Outlet_ID", how="left")
 
+    p_fit = _sample_for_mle(p, MAX_TOBIT_FIT_ROWS, "Tobit")
+
     # y = log(1 + monthly_volume), is_censored = constrained
-    y = np.log1p(p["monthly_volume"].clip(lower=0).values)
-    is_cen = p["constrained"].values.astype(bool)
+    y = np.log1p(p_fit["monthly_volume"].clip(lower=0).values)
+    is_cen = p_fit["constrained"].values.astype(bool)
 
     # Design matrix
-    cat_cols = [c for c in ["Outlet_Type", "Outlet_Size", "Province"] if c in p.columns]
-    num_cols = [c for c in ["Cooler_Count", "poi_tier", "poi_total_2km",
-                            "Latitude", "Longitude",
-                            "premium_share", "mass_share", "avg_price_per_liter",
-                            "sku_diversity"] if c in p.columns]
-    X_cat = pd.get_dummies(p[cat_cols], drop_first=True).astype(float)
-    X_num = p[num_cols].astype(float).fillna(0)
+    cat_cols = [c for c in ["Outlet_Type", "Outlet_Size", "Province"] if c in p_fit.columns]
+    num_cols = _feature_columns_available(
+        p_fit,
+        ["Cooler_Count", "poi_tier", "poi_total_2km", "Latitude", "Longitude"]
+        + SKU_NUMERIC_FEATURES + SPATIAL_NUMERIC_FEATURES,
+    )
+    X_cat = pd.get_dummies(p_fit[cat_cols], drop_first=True).astype(float)
+    X_num = p_fit[num_cols].astype(float).fillna(0)
     X = pd.concat([X_cat, X_num], axis=1)
     X.insert(0, "const", 1.0)
     X_arr = X.values
@@ -533,8 +672,11 @@ def cross_check_loglinear(panel: pd.DataFrame,
     # NB: panel already has Cooler_Count merged in Step A; pull the rest from feats only
     # panel may already have Outlet_Type/Size/Province/poi_tier from detect_constraints
     p = panel[panel["constrained"] == 0].copy()
-    need = [c for c in ["Outlet_Type", "Outlet_Size", "Province", "poi_tier",
-                        "Latitude", "Longitude", "poi_total_2km"]
+    feature_candidates = [
+        "Outlet_Type", "Outlet_Size", "Province", "poi_tier",
+        "Latitude", "Longitude", "poi_total_2km",
+    ] + SPATIAL_NUMERIC_FEATURES
+    need = [c for c in feature_candidates
             if c not in p.columns]
     p_unc = p.merge(feats[["Outlet_ID"] + need], on="Outlet_ID", how="left") if need else p
 
@@ -546,7 +688,12 @@ def cross_check_loglinear(panel: pd.DataFrame,
         p_unc[["Outlet_Type", "Outlet_Size", "Province"]],
         drop_first=True,
     ).astype(float)
-    X_num = p_unc[["Cooler_Count", "poi_tier", "poi_total_2km", "Latitude", "Longitude"]].astype(float)
+    num_cols = _feature_columns_available(
+        p_unc,
+        ["Cooler_Count", "poi_tier", "poi_total_2km", "Latitude", "Longitude"]
+        + SPATIAL_NUMERIC_FEATURES,
+    )
+    X_num = p_unc[num_cols].astype(float).fillna(0)
     X = pd.concat([X_cat, X_num], axis=1)
     X.insert(0, "const", 1.0)
     X_arr = X.values
@@ -557,7 +704,7 @@ def cross_check_loglinear(panel: pd.DataFrame,
     # Predict for each outlet by averaging features per outlet from unconstrained months
     feat_per_outlet = (
         p_unc.groupby("Outlet_ID")
-             [["Cooler_Count", "poi_tier", "poi_total_2km", "Latitude", "Longitude"]]
+             [num_cols]
              .mean()
              .reset_index()
     )
@@ -566,9 +713,7 @@ def cross_check_loglinear(panel: pd.DataFrame,
         cat_per_outlet.set_index("Outlet_ID")[["Outlet_Type", "Outlet_Size", "Province"]],
         drop_first=True,
     ).reindex(columns=X_cat.columns, fill_value=0.0).astype(float)
-    Xo_num = feat_per_outlet.set_index("Outlet_ID")[["Cooler_Count", "poi_tier",
-                                                      "poi_total_2km", "Latitude",
-                                                      "Longitude"]].astype(float)
+    Xo_num = feat_per_outlet.set_index("Outlet_ID")[num_cols].astype(float).fillna(0)
     Xo = pd.concat([Xo_cat, Xo_num], axis=1)
     Xo.insert(0, "const", 1.0)
     Xo = Xo.reindex(columns=X.columns, fill_value=0.0)
@@ -817,6 +962,18 @@ def main() -> int:
         peer_q90=feats.set_index("Outlet_ID")["peer_q90"],
     )
 
+    print("\n== Step D.1: Phase 3 business-formula benchmark ==")
+    phase3_formula = compute_phase3_business_formula(
+        feats, season_extrap, season_mult, jan_2026_h, historical_jan_mean
+    ).reindex(bounded.index)
+    phase3_formula = apply_sanity_bounds(
+        predictions=phase3_formula,
+        own_q95=feats.set_index("Outlet_ID")["own_q95"],
+        peer_q90=feats.set_index("Outlet_ID")["peer_q90"],
+    )
+    rho_phase3, _ = spearmanr(bounded.values, phase3_formula.values, nan_policy="omit")
+    print(f"  Spearman rho (peer-Q90 vs Phase 3 formula): {rho_phase3:.3f}")
+
     # Step E (cross-check + blend with two independent methods)
     print("\n== Step E.1: Log-linear cross-check (complete-case proxy) ==")
     loglin_pred = cross_check_loglinear(panel, feats)
@@ -840,6 +997,7 @@ def main() -> int:
         # Save audit row
         pd.DataFrame([{
             "rho_peer_vs_loglinear": rho_loglin,
+            "rho_peer_vs_phase3_formula": rho_phase3,
             "rho_peer_vs_tobit": rho_tobit,
             "rho_loglinear_vs_tobit": rho_tobit_loglin,
             "threshold": config.TOBIT_CONVERGENCE_RHO,
@@ -875,15 +1033,20 @@ def main() -> int:
     if sfa_ok:
         methods_ok.append(rho_sfa >= config.TOBIT_CONVERGENCE_RHO)
 
-    if tobit_ok and sfa_ok and rho_loglin >= config.TOBIT_CONVERGENCE_RHO \
+    phase3_ok = rho_phase3 >= config.TOBIT_CONVERGENCE_RHO
+
+    if tobit_ok and sfa_ok and phase3_ok and rho_loglin >= config.TOBIT_CONVERGENCE_RHO \
        and rho_tobit >= config.TOBIT_CONVERGENCE_RHO \
        and rho_sfa >= config.TOBIT_CONVERGENCE_RHO:
-        # 4-way ensemble: peer-Q90 anchors at 40%, parametric methods split 60%
-        final = 0.40 * bounded + 0.20 * loglin_proj + 0.20 * tobit_proj + 0.20 * sfa_proj
-        print(f"  -> All 4 methods converge; 4-way ensemble 0.40/0.20/0.20/0.20")
+        # Peer-Q90 anchors; parametric methods and business formula add bounded signal.
+        final = 0.36 * bounded + 0.18 * loglin_proj + 0.18 * tobit_proj + 0.18 * sfa_proj + 0.10 * phase3_formula
+        print(f"  -> All 5 methods converge; ensemble 0.36/0.18/0.18/0.18/0.10")
     elif tobit_ok and rho_loglin >= config.TOBIT_CONVERGENCE_RHO and rho_tobit >= config.TOBIT_CONVERGENCE_RHO:
         final = 0.5 * bounded + 0.25 * loglin_proj + 0.25 * tobit_proj
         print(f"  -> 3 methods converge; 3-way ensemble 0.50/0.25/0.25")
+    elif phase3_ok and rho_loglin >= config.TOBIT_CONVERGENCE_RHO:
+        final = 0.55 * bounded + 0.30 * loglin_proj + 0.15 * phase3_formula
+        print(f"  -> Peer + log-linear + Phase 3 formula converge; ensemble 0.55/0.30/0.15")
     elif rho_loglin >= config.TOBIT_CONVERGENCE_RHO:
         w_peer = config.TOBIT_BLEND_W_PEER
         w_xchk = config.TOBIT_BLEND_W_TOBIT
@@ -896,6 +1059,7 @@ def main() -> int:
     # Persist 4-method convergence audit
     audit_row = {
         "rho_peer_vs_loglinear": rho_loglin,
+        "rho_peer_vs_phase3_formula": rho_phase3,
         "rho_peer_vs_tobit": rho_tobit if tobit_ok else None,
         "rho_loglinear_vs_tobit": rho_tobit_loglin if tobit_ok else None,
         "rho_peer_vs_sfa": rho_sfa if sfa_ok else None,

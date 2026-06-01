@@ -104,6 +104,77 @@ def parse_elements(data: dict, tag_key: str, tag_value: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _build_tag_category_map() -> dict[tuple[str, str], str]:
+    tag_map: dict[tuple[str, str], str] = {}
+    for category, tags in config.POI_CATEGORIES.items():
+        for key, value in tags:
+            tag_map[(key, value)] = category
+    return tag_map
+
+
+def _gaussian_decay(distances_m: np.ndarray, sigma_m: float) -> np.ndarray:
+    return np.exp(-(distances_m ** 2) / (2.0 * sigma_m ** 2))
+
+
+def _gravity_decay(distances_m: np.ndarray) -> np.ndarray:
+    return 1.0 / (distances_m ** 2 + 1.0)
+
+
+def compute_distance_decay_scores(outlets: pd.DataFrame, poi: pd.DataFrame) -> pd.DataFrame:
+    """Compute distance-decay POI scores per outlet by category.
+
+    Gaussian decay for demand-style categories; gravity decay for competitors.
+    Returns Outlet_ID + score columns + poi_diversity_score.
+    """
+    out = pd.DataFrame({"Outlet_ID": outlets["Outlet_ID"]})
+    score_cols = []
+    for category, col in config.POI_CATEGORY_OUTPUT.items():
+        out[col] = 0.0
+        score_cols.append(col)
+    out["poi_diversity_score"] = 0.0
+
+    coords = outlets[["Latitude", "Longitude"]].to_numpy()
+    valid_mask = np.isfinite(coords).all(axis=1)
+    if not valid_mask.any() or poi.empty:
+        return out
+
+    o_rad = np.radians(coords[valid_mask])
+    tag_map = _build_tag_category_map()
+    poi = poi.copy()
+    poi["category"] = [tag_map.get(pair) for pair in zip(poi["tag_key"], poi["tag_value"])]
+    poi = poi.loc[poi["category"].notna()]
+    if poi.empty:
+        return out
+
+    for category, col in config.POI_CATEGORY_OUTPUT.items():
+        sub = poi.loc[poi["category"] == category]
+        if sub.empty:
+            continue
+
+        radius_m = float(config.POI_SEARCH_RADIUS_M.get(category, 500))
+        radius_rad = radius_m / EARTH_RADIUS_M
+        decay_model = config.POI_DECAY_MODEL.get(category, "gaussian")
+        sigma_m = float(config.POI_SIGMA_M.get(category, 300))
+
+        p_rad = np.radians(sub[["lat", "lon"]].to_numpy())
+        tree = BallTree(p_rad, metric="haversine")
+        _, dists = tree.query_radius(o_rad, r=radius_rad, return_distance=True)
+
+        scores = np.zeros(o_rad.shape[0], dtype=float)
+        for i, dist_rad in enumerate(dists):
+            if dist_rad.size:
+                d_m = dist_rad * EARTH_RADIUS_M
+                if decay_model == "gravity":
+                    scores[i] = _gravity_decay(d_m).sum()
+                else:
+                    scores[i] = _gaussian_decay(d_m, sigma_m).sum()
+        out.loc[valid_mask, col] = scores
+
+    # Diversity = share of categories with meaningful signal (score > 0.05)
+    out["poi_diversity_score"] = (out[score_cols] > 0.05).sum(axis=1) / max(len(score_cols), 1)
+    return out
+
+
 def fetch_all_pois() -> pd.DataFrame:
     config.POI_RAW.mkdir(parents=True, exist_ok=True)
     frames: list[pd.DataFrame] = []
@@ -156,6 +227,13 @@ def count_pois_per_outlet(outlets: pd.DataFrame, poi: pd.DataFrame) -> pd.DataFr
     for r_km in radii_km:
         cols = [c for c in result.columns if c.endswith(f"_{r_km}km")]
         result[f"poi_total_{r_km}km"] = result[cols].sum(axis=1)
+
+    # Distance-decay category scores + diversity
+    scores = compute_distance_decay_scores(outlets, poi)
+    result = result.merge(scores, on="Outlet_ID", how="left")
+    for col in scores.columns:
+        if col != "Outlet_ID":
+            result[col] = result[col].fillna(0.0)
 
     return result
 

@@ -148,6 +148,39 @@ def normalise_outlet_type(df: pd.DataFrame, column: str = "Outlet_Type") -> pd.D
     return df
 
 
+def log_outlet_size_adjustments(n_reclassified: int,
+                                n_imputed: int,
+                                n_lowercase_total: int) -> None:
+    """Record Outlet_Size corrections based on cooler-count evidence."""
+    if n_lowercase_total:
+        _log(
+            "Outlet_Size lowercase 'small' detected",
+            count=n_lowercase_total,
+            examples=[],
+            treatment="flagged",
+            detail="Lowercase 'small' has a cooler-count profile inconsistent with"
+                   " canonical Small outlets; reclassification applied where"
+                   " cooler_count >= 2.",
+        )
+    if n_reclassified:
+        _log(
+            "Outlet_Size reclassified via cooler count",
+            count=n_reclassified,
+            examples=[],
+            treatment="cleaned",
+            detail="Lowercase 'small' rows with cooler_count >= 2 re-mapped to"
+                   " Medium/Large/Extra Large based on cooler thresholds.",
+        )
+    if n_imputed:
+        _log(
+            "Outlet_Size imputed from cooler count",
+            count=n_imputed,
+            examples=[],
+            treatment="cleaned",
+            detail="Null Outlet_Size values filled using cooler-count thresholds.",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Codebook mismatches
 # ---------------------------------------------------------------------------
