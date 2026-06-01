@@ -8,6 +8,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "./theme-toggle";
 
 const items = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -56,8 +57,11 @@ export function NavSidebar() {
           );
         })}
       </nav>
-      <div className="mt-auto px-5 py-4 text-[10px] uppercase tracking-wider text-muted-foreground">
-        Team DataX · v0.1
+      <div className="mt-auto px-5 py-4 flex flex-col gap-4">
+        <ThemeToggle />
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          Team DataX · v0.1
+        </div>
       </div>
     </aside>
   );

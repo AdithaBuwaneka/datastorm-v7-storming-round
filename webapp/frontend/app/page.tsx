@@ -125,7 +125,7 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>What's next</CardTitle>
+            <CardTitle>What&apos;s next</CardTitle>
             <CardDescription>
               Direct paths into the decision tools.
             </CardDescription>

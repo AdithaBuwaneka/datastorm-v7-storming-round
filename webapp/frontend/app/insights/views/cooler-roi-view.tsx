@@ -13,23 +13,85 @@ import { KpiTile } from "@/components/kpi-tile";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
+import { InsightFilterBar, SortableHeader, FilterConfig } from "../insight-filter-bar";
 
 const PAGE_SIZE = 20;
 
-export async function CoolerRoiView({ page = 1 }: { page?: number }) {
-  const [summary, top100] = await Promise.all([
+export async function CoolerRoiView({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
+  const [summary, top100, filters] = await Promise.all([
     api.coolerRoiSummary(),
     api.coolerRoiTop100(),
+    api.outletFilters(),
   ]);
 
-  const netValue =
-    (summary.top100_24mo_margin_LKR ?? 0) -
-    (summary.top100_total_capex_LKR ?? 0);
+  const rawPage = Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page;
+  const page = Math.max(1, Number(rawPage) || 1);
+  const rawSearch = Array.isArray(searchParams.search) ? searchParams.search[0] : searchParams.search;
+  const search = rawSearch || "";
 
-  const totalPages = Math.max(1, Math.ceil(top100.length / PAGE_SIZE));
+  const qType = Array.isArray(searchParams.outlet_type) ? searchParams.outlet_type[0] : searchParams.outlet_type;
+  const qDist = Array.isArray(searchParams.distributor) ? searchParams.distributor[0] : searchParams.distributor;
+  const qGreen = Array.isArray(searchParams.greenfield) ? searchParams.greenfield[0] : searchParams.greenfield;
+  const qSort = Array.isArray(searchParams.sort_by) ? searchParams.sort_by[0] : searchParams.sort_by;
+  const qDesc = Array.isArray(searchParams.descending) ? searchParams.descending[0] : searchParams.descending;
+  const isDesc = qDesc === "true";
+
+  const filterConfigs: FilterConfig[] = [
+    {
+      key: "outlet_type",
+      label: "Type",
+      options: filters.outlet_types.map(t => ({ label: t, value: t }))
+    },
+    {
+      key: "distributor",
+      label: "Distributor",
+      options: filters.distributors.map(d => ({ label: d, value: d }))
+    },
+    {
+      key: "greenfield",
+      label: "Greenfield",
+      options: [{ label: "Yes", value: "true" }, { label: "No", value: "false" }]
+    }
+  ];
+
+  let filteredTop100 = top100.filter((r: any) => {
+    if (search && !r.Outlet_ID?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (qType && r.Outlet_Type !== qType) return false;
+    if (qDist && r.Distributor_ID !== qDist) return false;
+    if (qGreen) {
+      if (qGreen === "true" && !r.is_greenfield) return false;
+      if (qGreen === "false" && r.is_greenfield) return false;
+    }
+    return true;
+  });
+
+  if (qSort) {
+    filteredTop100.sort((a: any, b: any) => {
+      let aVal = a[qSort];
+      let bVal = b[qSort];
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return isDesc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+      }
+      aVal = Number(aVal) || 0;
+      bVal = Number(bVal) || 0;
+      return isDesc ? bVal - aVal : aVal - bVal;
+    });
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filteredTop100.length / PAGE_SIZE));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const start = (safePage - 1) * PAGE_SIZE;
-  const slice = top100.slice(start, start + PAGE_SIZE);
+  const slice = filteredTop100.slice(start, start + PAGE_SIZE);
+
+  const netValue = (summary.top100_24mo_margin_LKR ?? 0) - (summary.top100_total_capex_LKR ?? 0);
+
+  // Convert searchParams to Record<string, string> for pagination
+  const extraParams: Record<string, string> = {};
+  for (const [k, v] of Object.entries(searchParams)) {
+    if (k !== 'page' && k !== 'view') {
+      extraParams[k] = Array.isArray(v) ? (v[0] || "") : (v || "");
+    }
+  }
 
   return (
     <>
@@ -62,6 +124,8 @@ export async function CoolerRoiView({ page = 1 }: { page?: number }) {
         />
       </section>
 
+      <InsightFilterBar filters={filterConfigs} />
+
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Top-100 cooler deployment list</CardTitle>
@@ -77,13 +141,13 @@ export async function CoolerRoiView({ page = 1 }: { page?: number }) {
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-2 py-2">Outlet</th>
-                <th className="px-2 py-2">Type</th>
-                <th className="px-2 py-2">Distributor</th>
-                <th className="px-2 py-2 text-right">Monthly uplift</th>
-                <th className="px-2 py-2 text-right">Payback</th>
-                <th className="px-2 py-2 text-right">24-mo NPV</th>
-                <th className="px-2 py-2 text-center">Greenfield</th>
+                <SortableHeader field="Outlet_ID" label="Outlet" className="px-2 py-2" />
+                <SortableHeader field="Outlet_Type" label="Type" className="px-2 py-2" />
+                <SortableHeader field="Distributor_ID" label="Distributor" className="px-2 py-2" />
+                <SortableHeader field="monthly_uplift_L" label="Monthly uplift" className="px-2 py-2 text-right" />
+                <SortableHeader field="payback_months" label="Payback" className="px-2 py-2 text-right" />
+                <SortableHeader field="npv_24mo_LKR" label="24-mo NPV" className="px-2 py-2 text-right" />
+                <SortableHeader field="is_greenfield" label="Greenfield" className="px-2 py-2 text-center" />
                 <th className="px-2 py-2" />
               </tr>
             </thead>
@@ -120,14 +184,21 @@ export async function CoolerRoiView({ page = 1 }: { page?: number }) {
                   </td>
                 </tr>
               ))}
+              {slice.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-2 py-8 text-center text-muted-foreground">
+                    No results found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
           <PaginationBar
             page={safePage}
             totalPages={totalPages}
-            totalRows={top100.length}
+            totalRows={filteredTop100.length}
             label="outlets"
-            pageHref={(p) => buildPageHref("/insights", "cooler-roi", p)}
+            pageHref={(p) => buildPageHref("/insights", "cooler-roi", p, extraParams)}
           />
         </CardContent>
       </Card>

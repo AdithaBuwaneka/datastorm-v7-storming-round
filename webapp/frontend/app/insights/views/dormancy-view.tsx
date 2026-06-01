@@ -13,19 +13,92 @@ import { KpiTile } from "@/components/kpi-tile";
 import { RiskBadge } from "@/components/risk-badge";
 import { Button } from "@/components/ui/button";
 import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
+import { InsightFilterBar, SortableHeader, FilterConfig } from "../insight-filter-bar";
 
 const PAGE_SIZE = 20;
 
-export async function DormancyView({ page = 1 }: { page?: number }) {
-  const [bands, top] = await Promise.all([
+const RISK_RANKS: Record<string, number> = {
+  "low": 1,
+  "moderate": 2,
+  "high": 3,
+  "critical": 4,
+};
+
+export async function DormancyView({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
+  const [bands, top, filters] = await Promise.all([
     api.dormancyBands(),
     api.dormancyTop(200),
+    api.outletFilters(),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(top.length / PAGE_SIZE));
+  const rawPage = Array.isArray(searchParams.page) ? searchParams.page[0] : searchParams.page;
+  const page = Math.max(1, Number(rawPage) || 1);
+  const rawSearch = Array.isArray(searchParams.search) ? searchParams.search[0] : searchParams.search;
+  const search = rawSearch || "";
+
+  const qProv = Array.isArray(searchParams.province) ? searchParams.province[0] : searchParams.province;
+  const qDist = Array.isArray(searchParams.distributor) ? searchParams.distributor[0] : searchParams.distributor;
+  const qRisk = Array.isArray(searchParams.risk_band) ? searchParams.risk_band[0] : searchParams.risk_band;
+  const qSort = Array.isArray(searchParams.sort_by) ? searchParams.sort_by[0] : searchParams.sort_by;
+  const qDesc = Array.isArray(searchParams.descending) ? searchParams.descending[0] : searchParams.descending;
+  const isDesc = qDesc === "true";
+
+  const filterConfigs: FilterConfig[] = [
+    {
+      key: "province",
+      label: "Province",
+      options: filters.provinces.map(p => ({ label: p, value: p }))
+    },
+    {
+      key: "distributor",
+      label: "Distributor",
+      options: filters.distributors.map(d => ({ label: d, value: d }))
+    },
+    {
+      key: "risk_band",
+      label: "Risk band",
+      options: filters.risk_bands.map(r => ({ label: r, value: r }))
+    }
+  ];
+
+  let filteredTop = top.filter((r: any) => {
+    if (search && !r.Outlet_ID?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (qProv && r.Province !== qProv) return false;
+    if (qDist && r.Distributor_ID !== qDist) return false;
+    if (qRisk && r.risk_band !== qRisk) return false;
+    return true;
+  });
+
+  if (qSort) {
+    filteredTop.sort((a: any, b: any) => {
+      if (qSort === "risk_band") {
+        const aVal = RISK_RANKS[a.risk_band] || 0;
+        const bVal = RISK_RANKS[b.risk_band] || 0;
+        return isDesc ? bVal - aVal : aVal - bVal;
+      }
+      
+      let aVal = a[qSort];
+      let bVal = b[qSort];
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return isDesc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
+      }
+      aVal = Number(aVal) || 0;
+      bVal = Number(bVal) || 0;
+      return isDesc ? bVal - aVal : aVal - bVal;
+    });
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filteredTop.length / PAGE_SIZE));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const start = (safePage - 1) * PAGE_SIZE;
-  const slice = top.slice(start, start + PAGE_SIZE);
+  const slice = filteredTop.slice(start, start + PAGE_SIZE);
+
+  const extraParams: Record<string, string> = {};
+  for (const [k, v] of Object.entries(searchParams)) {
+    if (k !== 'page' && k !== 'view') {
+      extraParams[k] = Array.isArray(v) ? (v[0] || "") : (v || "");
+    }
+  }
 
   return (
     <>
@@ -56,6 +129,8 @@ export async function DormancyView({ page = 1 }: { page?: number }) {
         />
       </section>
 
+      <InsightFilterBar filters={filterConfigs} />
+
       <Card className="mt-6">
         <CardHeader>
           <CardTitle>Top-200 at-risk outlets</CardTitle>
@@ -68,14 +143,14 @@ export async function DormancyView({ page = 1 }: { page?: number }) {
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-2 py-2">Outlet</th>
-                <th className="px-2 py-2">Province</th>
-                <th className="px-2 py-2">Distributor</th>
-                <th className="px-2 py-2 text-right">Active months</th>
-                <th className="px-2 py-2 text-right">Recent avg</th>
-                <th className="px-2 py-2 text-center">Coolers</th>
-                <th className="px-2 py-2 text-center">Risk band</th>
-                <th className="px-2 py-2 text-right">Risk score</th>
+                <SortableHeader field="Outlet_ID" label="Outlet" className="px-2 py-2" />
+                <SortableHeader field="Province" label="Province" className="px-2 py-2" />
+                <SortableHeader field="Distributor_ID" label="Distributor" className="px-2 py-2" />
+                <SortableHeader field="active_months" label="Active months" className="px-2 py-2 text-right" />
+                <SortableHeader field="monthly_volume_mean" label="Recent avg" className="px-2 py-2 text-right" />
+                <SortableHeader field="Cooler_Count" label="Coolers" className="px-2 py-2 text-center" />
+                <SortableHeader field="risk_band" label="Risk band" className="px-2 py-2 text-center" />
+                <SortableHeader field="dormancy_risk_score" label="Risk score" className="px-2 py-2 text-right" />
                 <th className="px-2 py-2" />
               </tr>
             </thead>
@@ -107,14 +182,21 @@ export async function DormancyView({ page = 1 }: { page?: number }) {
                   </td>
                 </tr>
               ))}
+              {slice.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-2 py-8 text-center text-muted-foreground">
+                    No results found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
           <PaginationBar
             page={safePage}
             totalPages={totalPages}
-            totalRows={top.length}
+            totalRows={filteredTop.length}
             label="at-risk outlets"
-            pageHref={(p) => buildPageHref("/insights", "dormancy", p)}
+            pageHref={(p) => buildPageHref("/insights", "dormancy", p, extraParams)}
           />
         </CardContent>
       </Card>

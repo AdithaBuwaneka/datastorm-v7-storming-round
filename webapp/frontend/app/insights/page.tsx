@@ -63,13 +63,14 @@ export default async function InsightsPage({
           ? searchParams.page[0]
           : searchParams.page;
         const page = Math.max(1, Number(rawPage) || 1);
+
         switch (view) {
           case "budget":
             return <BudgetView />;
           case "cooler-roi":
-            return <CoolerRoiView page={page} />;
+            return <CoolerRoiView searchParams={searchParams} />;
           case "dormancy":
-            return <DormancyView page={page} />;
+            return <DormancyView searchParams={searchParams} />;
           case "scorecard":
             return <ScorecardView />;
           case "territories":

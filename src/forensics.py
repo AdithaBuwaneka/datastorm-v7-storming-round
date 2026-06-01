@@ -378,6 +378,190 @@ def detect_per_sku_outliers(df: pd.DataFrame, multiplier: float = 5.0) -> pd.Dat
 
 
 # ---------------------------------------------------------------------------
+# Geographic sanity — outlets whose coordinates fall outside any land polygon
+# ---------------------------------------------------------------------------
+
+def check_sea_coordinates(coords: pd.DataFrame,
+                          quarantine_threshold_km: float | None = 5.0
+                          ) -> pd.DataFrame:
+    """Flag outlets whose (Latitude, Longitude) falls outside a coarse global
+    land mask, stratify by distance to the nearest confirmed-land outlet,
+    and (optionally) quarantine those clearly far from any land.
+
+    The underlying land mask (``global_land_mask``, 1-arc-min Natural Earth
+    grid, ~1.85 km cells) is too coarse for Sri Lanka's narrow coastal
+    cities. Most flagged outlets are real coastal businesses (Galle Face,
+    Mount Lavinia, Hikkaduwa) sitting in grid cells that are mostly water.
+
+    The stratification by distance to the nearest confirmed-land outlet
+    separates likely-false-positives (≤ 5 km, coastal cluster) from
+    candidate true outliers (> 5 km, isolated). Outlets in the latter
+    bucket are quarantined to the standard ``outlet_coordinates_rejected``
+    parquet so their coordinates do not feed POI / spatial features.
+
+    The library is permitted to silently fail (ImportError or missing data)
+    — in that case the finding is logged as "skipped" and the dataframe is
+    returned unchanged so the pipeline never breaks for a missing optional
+    dependency.
+
+    Args:
+        coords: outlet coordinates dataframe with at least
+                ``Outlet_ID``, ``Latitude``, ``Longitude``.
+        quarantine_threshold_km: outlets whose nearest land-outlet is at
+                least this far are quarantined. ``None`` reverts to the
+                older observation-only behaviour.
+
+    Returns:
+        The dataframe with quarantined outlets removed (or unchanged if
+        ``quarantine_threshold_km`` is ``None`` or zero outlets clear the
+        bar). Side effects: writes
+        ``outputs/audit/sea_coordinate_outlets.csv``,
+        ``outputs/audit/sea_coordinate_quarantined.csv`` (when applicable),
+        and appends a forensic finding row.
+    """
+    try:
+        from global_land_mask import globe  # type: ignore
+    except Exception as e:
+        _log(
+            "Coordinates outside coarse land-mask",
+            count=0,
+            examples=[],
+            treatment="skipped",
+            detail=f"global_land_mask not available ({type(e).__name__}); "
+                   "install with `pip install global-land-mask` to enable.",
+        )
+        return coords
+
+    work = coords[["Outlet_ID", "Latitude", "Longitude"]].copy()
+    work["is_land"] = [
+        bool(globe.is_land(lat, lon))
+        for lat, lon in zip(work["Latitude"], work["Longitude"])
+    ]
+    sea = work.loc[~work["is_land"]].copy()
+    n_sea = len(sea)
+
+    if n_sea == 0:
+        _log(
+            "Coordinates outside coarse land-mask",
+            count=0,
+            examples=[],
+            treatment="reported_clean",
+            detail="All outlet coordinates fall on land at 1-arc-min resolution.",
+        )
+        return coords
+
+    # Stratify: distance from each sea outlet to nearest land outlet
+    from sklearn.neighbors import BallTree
+    land = work.loc[work["is_land"], ["Latitude", "Longitude"]]
+    if len(land) > 0:
+        land_rad = np.radians(land.values)
+        sea_rad = np.radians(sea[["Latitude", "Longitude"]].values)
+        tree = BallTree(land_rad, metric="haversine")
+        distances, _ = tree.query(sea_rad, k=1)
+        sea["nearest_land_outlet_km"] = (distances.flatten() * 6371).round(3)
+    else:
+        sea["nearest_land_outlet_km"] = float("nan")
+
+    def _bucket(d: float) -> str:
+        if d < 0.5:   return "coastal_confirmed"
+        if d < 2.0:   return "likely_coastal"
+        if d < 5.0:   return "borderline"
+        return "likely_ocean_outlier"
+
+    sea["category"] = sea["nearest_land_outlet_km"].apply(_bucket)
+    sea = sea.sort_values("nearest_land_outlet_km", ascending=False)
+
+    config.AUDIT.mkdir(parents=True, exist_ok=True)
+    sea.to_csv(config.AUDIT / "sea_coordinate_outlets.csv", index=False)
+
+    counts = sea["category"].value_counts().to_dict()
+
+    # Decide which rows to quarantine
+    quarantined_df = pd.DataFrame()
+    n_quarantined = 0
+    if quarantine_threshold_km is not None:
+        quarantined_df = sea.loc[
+            sea["nearest_land_outlet_km"] >= quarantine_threshold_km
+        ].copy()
+        n_quarantined = len(quarantined_df)
+
+    if n_quarantined > 0:
+        # Audit CSV of the quarantined subset
+        quarantined_df.to_csv(
+            config.AUDIT / "sea_coordinate_quarantined.csv", index=False
+        )
+
+        # Persist to the standard quarantine parquet so it shows up in
+        # silver/quarantine/_quarantine_summary.csv alongside DQ rejects.
+        from src import dq_checks as dq
+        rej = (
+            coords.merge(
+                quarantined_df[["Outlet_ID", "nearest_land_outlet_km", "category"]],
+                on="Outlet_ID",
+                how="inner",
+            )
+            .assign(
+                _rejection_reason=lambda d: (
+                    "Land-mask outlier (>= "
+                    f"{quarantine_threshold_km} km from nearest land outlet)"
+                ),
+                _check_name="sea_coordinate_quarantine",
+                _dataset="outlet_coordinates",
+            )
+        )
+        dq.persist_rejected(rej, dataset_name="outlet_coordinates")
+        dq.update_quarantine_summary(
+            dataset_name="outlet_coordinates",
+            check_name="sea_coordinate_quarantine",
+            total_in=len(coords),
+            n_rejected=n_quarantined,
+        )
+
+        # Drop the quarantined Outlet_IDs from coords
+        coords = coords.loc[~coords["Outlet_ID"].isin(quarantined_df["Outlet_ID"])].copy()
+
+    examples = [
+        f"{k}={int(v)}" for k, v in {
+            "coastal_confirmed": counts.get("coastal_confirmed", 0),
+            "likely_coastal":     counts.get("likely_coastal", 0),
+            "borderline":         counts.get("borderline", 0),
+            "likely_ocean_outlier": counts.get("likely_ocean_outlier", 0),
+        }.items()
+    ]
+    treatment = (
+        f"flagged_and_quarantined (>= {quarantine_threshold_km} km)"
+        if n_quarantined > 0
+        else "flagged_observation"
+    )
+    quarantine_note = (
+        f" QUARANTINED {n_quarantined} outlets with nearest_land_outlet_km >= "
+        f"{quarantine_threshold_km} (the 'likely_ocean_outlier' bucket). The "
+        "remaining flagged outlets are coastal businesses kept in the clean "
+        "set; the library's 1-arc-min grid is too coarse to label them ocean."
+        if n_quarantined > 0
+        else ""
+    )
+
+    _log(
+        "Coordinates outside coarse land-mask",
+        count=n_sea,
+        examples=examples,
+        treatment=treatment,
+        detail=(
+            "Detected via `global_land_mask.globe.is_land()` against a 1-arc-min "
+            "(~1.85 km) Natural Earth land grid. Outlets stratified by distance "
+            "to the nearest confirmed-land outlet: <0.5km coastal_confirmed, "
+            "<2km likely_coastal, <5km borderline, >=5km likely_ocean_outlier."
+            + quarantine_note
+            + " Audit: outputs/audit/sea_coordinate_outlets.csv. Higher-"
+              "resolution SL land polygon queued for the next iteration."
+        ),
+    )
+
+    return coords
+
+
+# ---------------------------------------------------------------------------
 # Stockout / constraint indicators (computed at outlet-month level)
 # ---------------------------------------------------------------------------
 
