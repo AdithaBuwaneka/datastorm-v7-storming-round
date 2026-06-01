@@ -11,9 +11,6 @@ that uncaps that latent demand, a budget optimiser that turns predictions
 into a concrete LKR allocation, and a web application that lets a sales
 manager browse, filter, and ask an LLM to explain any outlet on the network.
 
-> Full per-module reference: [`docs/methodology_overview.md`](docs/methodology_overview.md)
-> (mirror at `D:/DataStorm/methodology_overview.md`).
-
 ## Highlights
 
 - 5-method censored-demand ensemble (peer-Q90 anchor + log-linear + Tobit
@@ -49,8 +46,8 @@ src/             Canonical 12-phase Python pipeline
 notebooks/       00_demo_end_to_end.ipynb (EDA + pipeline walk-through)
 outputs/         DataX_predictions.csv + DataX_budget_allocations.csv +
                  ~35 audit artifacts (CSV + PNG)
-report/          Round-1 PDF (5 pages); Round-2 paper + pitch deck pending
-docs/            genai_log.md, methodology_overview.md
+report/          Technical paper + executive pitch deck
+docs/            genai_log.md
 webapp/
 ├── backend/     FastAPI service: 18 endpoints + Gemini XAI
 └── frontend/    Next.js 14 + Tailwind + shadcn-style UI
@@ -177,8 +174,8 @@ More setup detail at [`webapp/README.md`](webapp/README.md).
 | 2 | `outputs/DataX_budget_allocations.csv` | 8,989 × 2 (Outlet_ID, Trade_Spend_LKR) — Western Province |
 | 3 | this repository | Bronze→Silver→Gold pipeline + business modules + web app |
 | 4 | `webapp/` | Next.js + FastAPI app with Gemini-powered XAI per outlet |
-| 5 | `report/` | Round-1 PDF (5 pages) — Round-2 technical paper in progress |
-| 6 | `report/` | Round-2 executive pitch deck in progress |
+| 5 | `report/` | Technical paper |
+| 6 | `report/` | Executive pitch deck |
 
 Audit artifacts produced by the pipeline live under `outputs/audit/` and
 `data/gold/`. Notable files:
@@ -197,9 +194,6 @@ Audit artifacts produced by the pipeline live under `outputs/audit/` and
 | `data/bronze/_manifest.json` | sha256 + row counts of the six raw files |
 
 ## Methodology summary
-
-Full prose + 25 Mermaid diagrams in
-[`docs/methodology_overview.md`](docs/methodology_overview.md).
 
 1. **Constraint detection** per outlet-month: four OR-combined rules
    (stockout sandwich, zero-in-active outlet, no-cooler + high-zero,
