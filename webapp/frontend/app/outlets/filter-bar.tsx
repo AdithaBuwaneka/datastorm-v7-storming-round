@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
+import { X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -24,16 +25,16 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
     const params = new URLSearchParams(sp.toString());
     if (value) params.set(key, value);
     else params.delete(key);
-    params.delete("page"); // reset paging when filters change
+    params.delete("page");
     startTransition(() => router.push(`/outlets?${params.toString()}`));
   }
 
+  const hasActive =
+    Array.from(sp.entries()).filter(([k]) => k !== "page").length > 0;
+
   return (
-    <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-6">
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-muted-foreground">
-          Search Outlet_ID
-        </label>
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-card px-3 py-2">
+      <Field label="Search">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -41,12 +42,13 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
           }}
         >
           <Input
+            className="h-8 w-36 text-xs"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="OUT_12345"
           />
         </form>
-      </div>
+      </Field>
 
       <SelectField
         label="Province"
@@ -61,36 +63,57 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
         onChange={(v) => push("distributor", v)}
       />
       <SelectField
-        label="Outlet type"
+        label="Type"
         defaultValue={sp.get("outlet_type") ?? ""}
         options={filters.outlet_types}
         onChange={(v) => push("outlet_type", v)}
       />
       <SelectField
-        label="Outlet size"
+        label="Size"
         defaultValue={sp.get("outlet_size") ?? ""}
         options={filters.outlet_sizes}
         onChange={(v) => push("outlet_size", v)}
       />
       <SelectField
-        label="Dormancy risk"
+        label="Risk"
         defaultValue={sp.get("risk_band") ?? ""}
         options={filters.risk_bands}
         onChange={(v) => push("risk_band", v)}
       />
 
-      <div className="col-span-full flex items-center justify-end gap-2 pt-2">
-        <span className="text-xs text-muted-foreground">
-          {pending ? "Loading…" : null}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => router.push("/outlets")}
-        >
-          Clear filters
-        </Button>
+      <div className="ml-auto flex items-center gap-2">
+        {pending && (
+          <span className="text-xs text-muted-foreground">Loading…</span>
+        )}
+        {hasActive && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1 text-xs"
+            onClick={() => router.push("/outlets")}
+          >
+            <X className="h-3 w-3" />
+            Clear
+          </Button>
+        )}
       </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        {label}
+      </label>
+      {children}
     </div>
   );
 }
@@ -107,9 +130,9 @@ function SelectField({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+    <Field label={label}>
       <Select
+        className="h-8 w-32 text-xs"
         defaultValue={defaultValue}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -120,6 +143,6 @@ function SelectField({
           </option>
         ))}
       </Select>
-    </div>
+    </Field>
   );
 }
