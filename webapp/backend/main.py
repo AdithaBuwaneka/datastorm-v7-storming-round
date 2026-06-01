@@ -3,7 +3,8 @@
 Run locally:
     cd webapp/backend
     pip install -r requirements.txt
-    uvicorn main:app --reload --port 8000
+    cp .env.example .env       # set GEMINI_API_KEY
+    python -m uvicorn main:app --reload --port 8000
 
 The app loads gold parquets / audit CSVs into memory once at startup and
 exposes the data through JSON endpoints. CORS is open in local dev so the
@@ -11,21 +12,28 @@ Next.js frontend on :3000 can call it directly.
 """
 from __future__ import annotations
 
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+# Ensure routers/ and services/ are importable as top-level packages
+# whether the app is launched as `main:app` from webapp/backend/ or as
+# `backend.main:app` from webapp/.
+_BACKEND_DIR = Path(__file__).resolve().parent
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+
+from dotenv import load_dotenv                       # noqa: E402
+from fastapi import FastAPI                          # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware   # noqa: E402
 
 # Always load the .env that lives next to this file, regardless of CWD.
-_ENV_PATH = Path(__file__).resolve().parent / ".env"
-load_dotenv(_ENV_PATH)
+load_dotenv(_BACKEND_DIR / ".env")
 
-from .routers import outlets as outlets_router       # noqa: E402
-from .routers import dashboards as dash_router       # noqa: E402
-from .routers import xai as xai_router               # noqa: E402
-from .services.data_loader import get_cache          # noqa: E402
+from routers import outlets as outlets_router        # noqa: E402
+from routers import dashboards as dash_router        # noqa: E402
+from routers import xai as xai_router                # noqa: E402
+from services.data_loader import get_cache           # noqa: E402
 
 
 @asynccontextmanager

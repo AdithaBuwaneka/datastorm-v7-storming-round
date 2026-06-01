@@ -47,7 +47,7 @@ python -m src.run_pipeline
 ```bash
 cd webapp/backend
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env            # Windows PowerShell: copy .env.example .env
 # Edit .env and set GEMINI_API_KEY=<your_key>
 python -m uvicorn main:app --port 8000
 ```

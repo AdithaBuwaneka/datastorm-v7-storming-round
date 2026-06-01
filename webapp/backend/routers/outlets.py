@@ -7,7 +7,7 @@ from typing import Optional
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
-from ..services.data_loader import get_cache
+from services.data_loader import get_cache
 
 
 router = APIRouter(prefix="/api/outlets", tags=["outlets"])

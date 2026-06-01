@@ -4,7 +4,7 @@ from __future__ import annotations
 import pandas as pd
 from fastapi import APIRouter
 
-from ..services.data_loader import get_cache
+from services.data_loader import get_cache
 
 
 router = APIRouter(prefix="/api", tags=["dashboards"])
