@@ -1,6 +1,7 @@
 """End-to-end pipeline orchestrator.
 
-Runs the data + modeling pipeline from raw ingest to final predictions:
+Runs the data + modeling pipeline from raw ingest to final predictions
+and business analytics:
 
   Phase 1  Bronze ingest (copy raw + sha256 manifest)
   Phase 2  Silver clean + forensics
@@ -8,6 +9,11 @@ Runs the data + modeling pipeline from raw ingest to final predictions:
   Phase 4  Gold features (outlet-month panel + per-outlet features)
   Phase 5  Potential modeling (peer-Q90 + cross-check + validation)
   Phase 6  Western Province trade-spend allocation (LKR 5M)
+  Phase 7  Feature attribution (SHAP surrogate) + counterfactuals
+  Phase 8  Cooler-deployment ROI analytics
+  Phase 9  Outlet action cards
+  Phase 10 Dormancy-risk early warning
+  Phase 11 Distributor scorecard
 
 Each phase's main() is invoked in order. Re-running is idempotent: bronze
 overwrites with same bytes; silver wipes the quarantine summary; POI scraping
@@ -25,10 +31,12 @@ import time
 
 from src import bronze_ingest, silver_clean, poi_scraper, gold_features
 from src import potential_model, budget_optimization
+from src import xai_attribution, cooler_roi, outlet_actions, dormancy_risk
+from src import distributor_scorecard
 
 
 def _wrap(fn):
-    """budget_optimization.main returns None; coerce to 0 for the orchestrator."""
+    """Modules with main() returning None: coerce to 0 for the orchestrator."""
     def runner():
         rc = fn()
         return 0 if rc is None else rc
@@ -36,12 +44,17 @@ def _wrap(fn):
 
 
 PHASES = [
-    ("Bronze ingest",           bronze_ingest.main),
-    ("Silver clean + forensics", silver_clean.main),
-    ("POI scraping",            poi_scraper.main),
-    ("Gold features",           gold_features.main),
-    ("Potential modeling",      potential_model.main),
-    ("Budget allocation (Western Province)", _wrap(budget_optimization.main)),
+    ("Bronze ingest",                         bronze_ingest.main),
+    ("Silver clean + forensics",              silver_clean.main),
+    ("POI scraping",                          poi_scraper.main),
+    ("Gold features",                         gold_features.main),
+    ("Potential modeling",                    potential_model.main),
+    ("Budget allocation (Western Province)",  _wrap(budget_optimization.main)),
+    ("XAI attribution + counterfactuals",     _wrap(xai_attribution.main)),
+    ("Cooler-deployment ROI",                 _wrap(cooler_roi.main)),
+    ("Outlet action cards",                   _wrap(outlet_actions.main)),
+    ("Dormancy-risk early warning",           _wrap(dormancy_risk.main)),
+    ("Distributor scorecard",                 _wrap(distributor_scorecard.main)),
 ]
 
 
@@ -63,6 +76,10 @@ def main() -> int:
     print(f"Outputs:")
     print(f"  outputs/DataX_predictions.csv")
     print(f"  outputs/DataX_budget_allocations.csv")
+    print(f"  outputs/audit/cooler_roi_top100.csv")
+    print(f"  outputs/audit/outlet_actions_top3.csv")
+    print(f"  outputs/audit/dormancy_top200_at_risk.csv")
+    print(f"  outputs/audit/distributor_scorecard.csv")
     return 0
 
 
