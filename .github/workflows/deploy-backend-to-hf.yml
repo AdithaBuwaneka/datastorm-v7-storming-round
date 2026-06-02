@@ -1,0 +1,96 @@
+name: Deploy backend to Hugging Face Space
+
+# Every push to main that touches the backend, the gold data files, or
+# this workflow itself rebuilds the Space at
+# huggingface.co/spaces/adithaf7/datax-outlet-intelligence-api.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "webapp/backend/**"
+      - "data/gold/**"
+      - "outputs/DataX_predictions.csv"
+      - "outputs/DataX_budget_allocations.csv"
+      - "outputs/audit/**"
+      - "hf/**"
+      - ".github/workflows/deploy-backend-to-hf.yml"
+  workflow_dispatch: {}
+
+# HF_SPACE points at the target Space; HF_USER is the owning namespace.
+env:
+  HF_USER: adithaf7
+  HF_SPACE: datax-outlet-intelligence-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+
+      - name: Stage Space contents
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/hf_space"
+          mkdir -p "$STAGE/data/gold" "$STAGE/outputs/audit"
+
+          # Backend code (main.py, routers/, services/, requirements.txt)
+          cp -r webapp/backend/. "$STAGE/"
+          rm -f  "$STAGE/.env"   # safety: never push secrets
+
+          # Gold parquets
+          cp data/gold/outlet_features.parquet      "$STAGE/data/gold/"
+          cp data/gold/counterfactuals.parquet      "$STAGE/data/gold/"
+          cp data/gold/dormancy_risk.parquet        "$STAGE/data/gold/"
+          cp data/gold/outlet_clusters.parquet      "$STAGE/data/gold/"
+          cp data/gold/outlet_actions.parquet       "$STAGE/data/gold/"
+
+          # Final deliverable CSVs
+          cp outputs/DataX_predictions.csv          "$STAGE/outputs/"
+          cp outputs/DataX_budget_allocations.csv   "$STAGE/outputs/"
+
+          # Audit CSVs consumed by the backend
+          for f in \
+              shap_top_drivers_per_outlet.csv \
+              shap_global_importance.csv \
+              budget_allocation_by_channel.csv \
+              budget_allocation_by_distributor.csv \
+              cooler_roi_full.csv \
+              cooler_roi_top100.csv \
+              dormancy_top200_at_risk.csv \
+              distributor_scorecard.csv \
+              territory_clusters_summary.csv \
+              forensics_findings.csv; do
+            cp "outputs/audit/$f" "$STAGE/outputs/audit/"
+          done
+
+          # Dockerfile + README at the Space root
+          cp hf/Dockerfile "$STAGE/Dockerfile"
+          cp hf/README.md  "$STAGE/README.md"
+
+          # Drop the backend-package __init__.py at the Space root so
+          # uvicorn loading `main:app` does NOT treat the working dir
+          # as a package (we use absolute imports of `routers`, `services`).
+          rm -f "$STAGE/__init__.py"
+
+          echo "Staged $(find "$STAGE" -type f | wc -l) files, total $(du -sh "$STAGE" | cut -f1)."
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          set -euo pipefail
+          STAGE="$RUNNER_TEMP/hf_space"
+          cd "$STAGE"
+          git init -q -b main
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add -A
+          git commit -q -m "Auto-deploy from github.com/AdithaBuwaneka/DataX-DataStorm-7.0@${GITHUB_SHA::7}"
+          git push --force \
+              "https://${HF_USER}:${HF_TOKEN}@huggingface.co/spaces/${HF_USER}/${HF_SPACE}" \
+              main
+
+      - name: Summary
+        run: |
+          echo "::notice::Deployed to https://huggingface.co/spaces/${HF_USER}/${HF_SPACE}"
