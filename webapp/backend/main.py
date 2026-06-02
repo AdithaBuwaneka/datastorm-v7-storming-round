@@ -60,9 +60,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS — local dev (localhost / 127.0.0.1 any port) plus deployed origins:
+# Vercel previews/production (*.vercel.app), the HF Space's own origin so
+# the FastAPI Swagger UI works in-place, and any extra origins listed in
+# the CORS_EXTRA_ORIGINS env var (comma-separated). The regex is intentionally
+# strict so we don't accept arbitrary HTTP origins from the internet.
+import os as _os  # noqa: E402
+
+_extra = [o.strip() for o in _os.environ.get("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_origin_regex=(
+        r"https?://(localhost|127\.0\.0\.1)(:\d+)?|"
+        r"https://[a-zA-Z0-9-]+\.vercel\.app|"
+        r"https://[a-zA-Z0-9-]+-[a-zA-Z0-9-]+\.vercel\.app|"
+        r"https://huggingface\.co|"
+        r"https://[a-zA-Z0-9-]+\.hf\.space"
+    ),
+    allow_origins=_extra,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
