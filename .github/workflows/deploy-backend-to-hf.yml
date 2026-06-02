@@ -75,6 +75,12 @@ jobs:
 
           echo "Staged $(find "$STAGE" -type f | wc -l) files, total $(du -sh "$STAGE" | cut -f1)."
 
+      - name: Install git-lfs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y git-lfs >/dev/null
+          git lfs install --skip-repo
+
       - name: Push to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -82,9 +88,19 @@ jobs:
           set -euo pipefail
           STAGE="$RUNNER_TEMP/hf_space"
           cd "$STAGE"
+
           git init -q -b main
           git config user.email "actions@github.com"
           git config user.name "GitHub Actions"
+
+          # Hugging Face rejects raw binary blobs in regular git history;
+          # parquet + the large audit CSVs must travel through git-LFS / Xet.
+          git lfs install --local
+          git lfs track "*.parquet"
+          git lfs track "outputs/audit/shap_top_drivers_per_outlet.csv"
+          git lfs track "outputs/audit/cooler_roi_full.csv"
+          git add .gitattributes
+
           git add -A
           git commit -q -m "Auto-deploy from github.com/AdithaBuwaneka/DataX-DataStorm-7.0@${GITHUB_SHA::7}"
           git push --force \
