@@ -48,6 +48,14 @@ data/silver/clean/*.parquet
 data/silver/quarantine/*.parquet
 data/silver/quarantine/*.csv
 data/gold/*.parquet
+# Whitelist the five gold parquets the web app backend needs at runtime
+# (so the Hugging Face Space deployment can ship without re-running the
+# pipeline). Together they are ~8 MB, well within GitHub limits.
+!data/gold/outlet_features.parquet
+!data/gold/counterfactuals.parquet
+!data/gold/dormancy_risk.parquet
+!data/gold/outlet_clusters.parquet
+!data/gold/outlet_actions.parquet
 
 # Final outputs and audit artifacts ARE committed so reviewers can inspect
 # without running the full pipeline (they are reproducible from src/).
