@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: FastAPI backend serving outlet potential, SHAP attribution, and Gemini-grounded XAI narratives for 20,000 Sri Lankan beverage outlets.
+short_description: Outlet potential + SHAP + Gemini XAI backend
 ---
 
 # DataX Outlet Intelligence — Backend (Hugging Face Space)
