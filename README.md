@@ -66,8 +66,8 @@ webapp/
 ### 1. Clone
 
 ```bash
-git clone https://github.com/AdithaBuwaneka/datastorm-v7-storming-round.git
-cd datastorm-v7-storming-round
+git clone https://github.com/AdithaBuwaneka/DataX-DataStorm-7.0.git
+cd DataX-DataStorm-7.0
 ```
 
 ### 2. Python environment
