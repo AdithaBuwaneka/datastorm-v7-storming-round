@@ -4,6 +4,25 @@ End-to-end decision-support system for the **January 2026 Maximum Monthly
 Purchase Potential** of 20,000 traditional-trade beverage outlets in Sri
 Lanka, plus the trade-marketing tools that act on those numbers.
 
+## Live deployments
+
+| | URL |
+|---|---|
+| 🌐 **Web app (frontend)** | <https://data-x-data-storm-7-0.vercel.app> |
+| ⚙️ **API (backend)** | <https://adithaf7-datax-outlet-intelligence-api.hf.space> |
+| 📖 **API docs (Swagger)** | <https://adithaf7-datax-outlet-intelligence-api.hf.space/docs> |
+| 🏗️ **Backend Space page** | <https://huggingface.co/spaces/adithaf7/datax-outlet-intelligence-api> |
+
+The frontend (Vercel) talks to the backend (Hugging Face Space). Both auto-redeploy
+on every push to `main`:
+
+- **Frontend** — Vercel watches the repo, runs `next build` on `webapp/frontend/`.
+- **Backend** — `.github/workflows/deploy-backend-to-hf.yml` stages
+  `webapp/backend/` + gold data files + `hf/Dockerfile` and force-pushes them
+  to the HF Space's git remote.
+
+
+
 The problem has **no target variable**: the observed monthly volume is the
 censored minimum of true demand and systemic constraints (credit, stockout,
 cooler capacity, delivery cap). The repository contains a 12-phase pipeline
