@@ -55,7 +55,7 @@ export default async function DashboardPage() {
         description="January 2026 outlet potential and decision-support summary"
       />
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiTile
           label="Outlets covered"
           value={fmtNumber(summary.n_outlets)}

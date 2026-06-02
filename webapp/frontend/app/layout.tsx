@@ -19,9 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex">
+          <div className="flex max-w-full">
             <NavSidebar />
-            <main className="min-h-screen flex-1 p-6 lg:p-10">
+            <main className="min-w-0 flex-1 p-6 lg:p-10">
               {children}
             </main>
           </div>

@@ -42,6 +42,13 @@
     --danger: 0 72% 60%;
   }
 
+  html,
+  body {
+    /* Prevent any wide child (tables, maps, recharts SVGs) from
+       producing a page-level horizontal scroll on the dashboard. */
+    @apply overflow-x-hidden;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;

@@ -28,12 +28,19 @@ export function KpiTile({
   className,
 }: KpiTileProps) {
   return (
-    <Card className={cn("flex items-start justify-between gap-4", className)}>
-      <div className="flex flex-col gap-1">
+    <Card
+      className={cn(
+        "flex items-start justify-between gap-3 overflow-hidden",
+        className,
+      )}
+    >
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="text-xs uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
-        <span className="text-2xl font-bold leading-tight">{value}</span>
+        <span className="break-words text-2xl font-bold leading-tight">
+          {value}
+        </span>
         {sublabel && (
           <span className="text-xs text-muted-foreground">{sublabel}</span>
         )}
@@ -41,7 +48,7 @@ export function KpiTile({
       {Icon && (
         <div
           className={cn(
-            "rounded-md p-2",
+            "flex shrink-0 items-center justify-center rounded-md p-2",
             accentBg[accent],
           )}
         >
