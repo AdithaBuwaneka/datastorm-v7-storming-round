@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Store,
   BarChart3,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
@@ -14,6 +15,7 @@ const items = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/outlets", label: "Outlets", icon: Store },
   { href: "/insights", label: "Insights", icon: BarChart3 },
+  { href: "/shop-map", label: "Shop Map", icon: MapPin },
 ] as const;
 
 export function NavSidebar() {

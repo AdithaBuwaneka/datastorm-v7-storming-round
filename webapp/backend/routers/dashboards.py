@@ -143,3 +143,58 @@ def shap_global(limit: int = 30):
     if c.shap_global.empty:
         return []
     return _records(c.shap_global.head(limit))
+
+
+@router.get("/shop-map/outlets")
+def shop_map_outlets():
+    """All outlet locations annotated with their data-lake level.
+
+    Returns three lists:
+    - gold:     outlets that cleared all pipeline stages (outlet_features)
+    - silver:   empty in this pipeline (silver == gold)
+    - rejected: outlets dropped at the silver coordinate-DQ stage with failure reasons
+    """
+    c = get_cache()
+
+    # Gold outlets — already have lat/lon in features
+    gold_cols = ["Outlet_ID", "Latitude", "Longitude", "Outlet_Type", "Province"]
+    gold_df = c.features[[col for col in gold_cols if col in c.features.columns]].copy()
+    gold_records = (
+        gold_df
+        .rename(columns={"Outlet_ID": "outlet_id", "Latitude": "lat",
+                         "Longitude": "lon", "Outlet_Type": "outlet_type",
+                         "Province": "province"})
+        .replace({float("nan"): None})
+        .to_dict(orient="records")
+    )
+
+    # Rejected outlets — coordinate DQ failures not in gold.
+    # rejected_coords already carries Latitude/Longitude from the evaluated dataset.
+    rejected_records: list[dict] = []
+    if not c.rejected_coords.empty:
+        gold_ids = set(c.features["Outlet_ID"])
+        not_gold = c.rejected_coords[~c.rejected_coords["Outlet_ID"].isin(gold_ids)]
+        not_gold = not_gold.drop_duplicates("Outlet_ID")
+
+        # Attach outlet type from bronze master
+        rej = not_gold.copy()
+        if not c.bronze_master.empty:
+            rej = rej.merge(
+                c.bronze_master[["Outlet_ID", "Outlet_Type"]],
+                on="Outlet_ID", how="left"
+            )
+
+        keep = ["Outlet_ID", "Latitude", "Longitude", "Outlet_Type",
+                "_rejection_reason", "_check_name"]
+        rej = rej[[col for col in keep if col in rej.columns]]
+        rejected_records = (
+            rej
+            .rename(columns={"Outlet_ID": "outlet_id", "Latitude": "lat",
+                              "Longitude": "lon", "Outlet_Type": "outlet_type",
+                              "_rejection_reason": "rejection_reason",
+                              "_check_name": "check_name"})
+            .replace({float("nan"): None})
+            .to_dict(orient="records")
+        )
+
+    return {"gold": gold_records, "silver": [], "rejected": rejected_records}

@@ -49,6 +49,8 @@ class DataCache:
     cluster_membership: pd.DataFrame = field(default_factory=pd.DataFrame)
     outlet_actions: pd.DataFrame = field(default_factory=pd.DataFrame)
     forensics: pd.DataFrame = field(default_factory=pd.DataFrame)
+    bronze_master: pd.DataFrame = field(default_factory=pd.DataFrame)
+    rejected_coords: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @property
     def outlets_table(self) -> pd.DataFrame:
@@ -112,4 +114,8 @@ def get_cache() -> DataCache:
     cache.cluster_membership = _read_parquet(gold / "outlet_clusters.parquet")
     cache.outlet_actions    = _read_parquet(gold / "outlet_actions.parquet")
     cache.forensics         = _read_csv(audit / "forensics_findings.csv")
+    bronze = root / "data" / "bronze"
+    quarantine = root / "data" / "silver" / "quarantine"
+    cache.bronze_master     = _read_csv(bronze / "outlet_master.csv")
+    cache.rejected_coords   = _read_parquet(quarantine / "outlet_coordinates_rejected.parquet")
     return cache
