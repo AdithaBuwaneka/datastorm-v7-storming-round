@@ -9,6 +9,8 @@ on:
     paths:
       - "webapp/backend/**"
       - "data/gold/**"
+      - "data/bronze/outlet_master.csv"
+      - "data/silver/quarantine/outlet_coordinates_rejected.parquet"
       - "outputs/DataX_predictions.csv"
       - "outputs/DataX_budget_allocations.csv"
       - "outputs/audit/**"
@@ -32,7 +34,8 @@ jobs:
         run: |
           set -euo pipefail
           STAGE="$RUNNER_TEMP/hf_space"
-          mkdir -p "$STAGE/data/gold" "$STAGE/outputs/audit"
+          mkdir -p "$STAGE/data/gold" "$STAGE/data/bronze" \
+                   "$STAGE/data/silver/quarantine" "$STAGE/outputs/audit"
 
           # Backend code (main.py, routers/, services/, requirements.txt)
           cp -r webapp/backend/. "$STAGE/"
@@ -44,6 +47,12 @@ jobs:
           cp data/gold/dormancy_risk.parquet        "$STAGE/data/gold/"
           cp data/gold/outlet_clusters.parquet      "$STAGE/data/gold/"
           cp data/gold/outlet_actions.parquet       "$STAGE/data/gold/"
+
+          # Shop-map endpoint inputs: bronze master (rejected-outlet types) +
+          # the coordinate-DQ quarantine parquet (rejected points + reasons).
+          cp data/bronze/outlet_master.csv "$STAGE/data/bronze/"
+          cp data/silver/quarantine/outlet_coordinates_rejected.parquet \
+             "$STAGE/data/silver/quarantine/"
 
           # Final deliverable CSVs
           cp outputs/DataX_predictions.csv          "$STAGE/outputs/"

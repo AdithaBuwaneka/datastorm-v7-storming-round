@@ -42,11 +42,15 @@ data/bronze/*.json
 # (sourced from Sri Lanka government calendar; required input to gold_features)
 !data/bronze/jan_2026_holidays.csv
 !data/bronze/_manifest.json
+# Shop-map endpoint needs the bronze master (for rejected-outlet types).
+!data/bronze/outlet_master.csv
 data/bronze/poi_raw/*.json
 data/bronze/poi_raw/*.parquet
 data/silver/clean/*.parquet
 data/silver/quarantine/*.parquet
 data/silver/quarantine/*.csv
+# Shop-map endpoint plots coordinate-DQ rejects with their failure reasons.
+!data/silver/quarantine/outlet_coordinates_rejected.parquet
 data/gold/*.parquet
 # Whitelist the five gold parquets the web app backend needs at runtime
 # (so the Hugging Face Space deployment can ship without re-running the
