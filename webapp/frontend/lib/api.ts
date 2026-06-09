@@ -79,4 +79,10 @@ export const api = {
   territories: () => jsonFetch<Record<string, any>[]>("/api/territories"),
   forensics: () => jsonFetch<Record<string, any>[]>("/api/forensics"),
   shapGlobal: (limit = 30) => jsonFetch<Record<string, any>[]>(`/api/shap/global?limit=${limit}`),
+
+  shopMapOutlets: () => jsonFetch<{
+    gold: { outlet_id: string; lat: number; lon: number; outlet_type: string | null; province: string | null }[];
+    silver: never[];
+    rejected: { outlet_id: string; lat: number; lon: number; outlet_type: string | null; rejection_reason: string | null; check_name: string | null }[];
+  }>("/api/shop-map/outlets"),
 };
