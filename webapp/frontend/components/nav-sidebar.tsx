@@ -21,7 +21,7 @@ const items = [
 export function NavSidebar() {
   const pathname = usePathname() ?? "/";
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-border bg-card lg:flex">
+    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-60 flex-col overflow-y-auto border-r border-border bg-card lg:flex">
       <div className="px-5 py-6">
         <div className="flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground font-bold">

@@ -7,6 +7,7 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
+import { ScorecardBar } from "@/components/dashboard-charts";
 
 function HealthBar({ z }: { z: number }) {
   // Map z-score (typically -2..+2) onto a 0..100 fill width
@@ -26,6 +27,24 @@ function HealthBar({ z }: { z: number }) {
 export async function ScorecardView() {
   const rows = await api.scorecard();
   return (
+    <div className="flex flex-col gap-6">
+    <Card>
+      <CardHeader>
+        <CardTitle>Composite health ranking</CardTitle>
+        <CardDescription>
+          Each distributor&apos;s z-scaled health score — the spread between
+          the strongest and weakest is an actionable management gap.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ScorecardBar
+          data={rows.map((r: any) => ({
+            name: r.Distributor_ID,
+            value: r.health_z ?? 0,
+          }))}
+        />
+      </CardContent>
+    </Card>
     <Card>
       <CardHeader>
         <CardTitle>Distributor scorecard</CardTitle>
@@ -95,5 +114,6 @@ export async function ScorecardView() {
         </table>
       </CardContent>
     </Card>
+    </div>
   );
 }

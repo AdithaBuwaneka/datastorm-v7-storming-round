@@ -14,6 +14,7 @@ import { RiskBadge } from "@/components/risk-badge";
 import { Button } from "@/components/ui/button";
 import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
 import { InsightFilterBar, SortableHeader, FilterConfig } from "../insight-filter-bar";
+import { DormancyDonut } from "@/components/dashboard-charts";
 
 const PAGE_SIZE = 20;
 
@@ -128,6 +129,25 @@ export async function DormancyView({ searchParams }: { searchParams: Record<stri
           accent="danger"
         />
       </section>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Risk band distribution</CardTitle>
+          <CardDescription>
+            Share of outlets in each predicted dormancy-risk band.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DormancyDonut
+            data={[
+              { name: "Low", value: bands.low ?? 0 },
+              { name: "Moderate", value: bands.moderate ?? 0 },
+              { name: "High", value: bands.high ?? 0 },
+              { name: "Critical", value: bands.critical ?? 0 },
+            ].filter((d) => d.value > 0)}
+          />
+        </CardContent>
+      </Card>
 
       <InsightFilterBar filters={filterConfigs} />
 

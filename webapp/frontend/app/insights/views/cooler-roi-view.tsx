@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
 import { InsightFilterBar, SortableHeader, FilterConfig } from "../insight-filter-bar";
+import { CoolerNpvBar } from "@/components/dashboard-charts";
 
 const PAGE_SIZE = 20;
 
@@ -123,6 +124,30 @@ export async function CoolerRoiView({ searchParams }: { searchParams: Record<str
           accent="success"
         />
       </section>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Top 10 outlets by 24-month NPV</CardTitle>
+          <CardDescription>
+            The highest-return cooler deployments — net present value over a
+            24-month horizon.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CoolerNpvBar
+            data={[...top100]
+              .sort(
+                (a: any, b: any) =>
+                  (b.npv_24mo_LKR ?? 0) - (a.npv_24mo_LKR ?? 0),
+              )
+              .slice(0, 10)
+              .map((r: any) => ({
+                name: r.Outlet_ID,
+                value: r.npv_24mo_LKR ?? 0,
+              }))}
+          />
+        </CardContent>
+      </Card>
 
       <InsightFilterBar filters={filterConfigs} />
 
