@@ -24,7 +24,11 @@ export function InsightFilterBar({ filters }: { filters: FilterConfig[] }) {
     if (value) params.set(key, value);
     else params.delete(key);
     params.delete("page");
-    startTransition(() => router.push(`/insights?${params.toString()}`));
+    // scroll: false keeps the viewport where it is — filtering shouldn't
+    // jump the page back to the top.
+    startTransition(() =>
+      router.push(`/insights?${params.toString()}`, { scroll: false }),
+    );
   }
 
   const hasSearch = !!sp.get("search");
@@ -90,7 +94,9 @@ export function InsightFilterBar({ filters }: { filters: FilterConfig[] }) {
             const view = params.get("view");
             const newParams = new URLSearchParams();
             if (view) newParams.set("view", view);
-            startTransition(() => router.push(`/insights?${newParams.toString()}`));
+            startTransition(() =>
+              router.push(`/insights?${newParams.toString()}`, { scroll: false }),
+            );
           }}
         >
           <X className="h-3 w-3" />
@@ -132,7 +138,7 @@ export function SortableHeader({
       params.set("sort_by", field);
       params.delete("descending"); // Default to asc
     }
-    router.push(`/insights?${params.toString()}`);
+    router.push(`/insights?${params.toString()}`, { scroll: false });
   }
 
   return (

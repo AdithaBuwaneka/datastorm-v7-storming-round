@@ -26,7 +26,10 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
     if (value) params.set(key, value);
     else params.delete(key);
     params.delete("page");
-    startTransition(() => router.push(`/outlets?${params.toString()}`));
+    // Keep the scroll position — filtering shouldn't jump back to the top.
+    startTransition(() =>
+      router.push(`/outlets?${params.toString()}`, { scroll: false }),
+    );
   }
 
   const hasActive =
@@ -93,7 +96,7 @@ export function FilterBar({ filters }: { filters: FilterOptions }) {
           variant="ghost"
           size="sm"
           className={`h-8 gap-1 text-xs ${hasActive ? "" : "invisible"}`}
-          onClick={() => router.push("/outlets")}
+          onClick={() => router.push("/outlets", { scroll: false })}
         >
           <X className="h-3 w-3" />
           Clear
