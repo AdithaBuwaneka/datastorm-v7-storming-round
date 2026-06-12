@@ -42,12 +42,9 @@
     --danger: 0 72% 60%;
   }
 
-  html,
-  body {
-    /* Prevent any wide child (tables, maps, recharts SVGs) from
-       producing a page-level horizontal scroll on the dashboard. */
-    @apply overflow-x-hidden;
-  }
+  /* NOTE: do NOT put overflow-x on html/body — it turns the root into a
+     scroll container and breaks `position: sticky` on the sidebar.
+     Horizontal-overflow clipping is applied to <main> instead (see layout). */
 
   body {
     @apply bg-background text-foreground antialiased;

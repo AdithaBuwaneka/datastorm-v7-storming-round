@@ -19,12 +19,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
-          <div className="flex max-w-full">
-            <NavSidebar />
-            <main className="min-w-0 flex-1 p-6 lg:p-10">
-              {children}
-            </main>
-          </div>
+          {/* The sidebar is position:fixed (locked to the viewport), so it
+              is out of normal flow. We reserve its width with a left margin
+              on large screens so the content never slides underneath it. */}
+          <NavSidebar />
+          <main className="min-h-screen min-w-0 overflow-x-hidden p-6 lg:ml-60 lg:p-10">
+            {children}
+          </main>
         </ThemeProvider>
       </body>
     </html>

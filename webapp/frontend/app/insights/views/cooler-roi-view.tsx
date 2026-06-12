@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
 import { InsightFilterBar, SortableHeader, FilterConfig } from "../insight-filter-bar";
+import { CoolerNpvBar } from "@/components/dashboard-charts";
 
 const PAGE_SIZE = 20;
 
@@ -31,7 +32,6 @@ export async function CoolerRoiView({ searchParams }: { searchParams: Record<str
 
   const qType = Array.isArray(searchParams.outlet_type) ? searchParams.outlet_type[0] : searchParams.outlet_type;
   const qDist = Array.isArray(searchParams.distributor) ? searchParams.distributor[0] : searchParams.distributor;
-  const qGreen = Array.isArray(searchParams.greenfield) ? searchParams.greenfield[0] : searchParams.greenfield;
   const qSort = Array.isArray(searchParams.sort_by) ? searchParams.sort_by[0] : searchParams.sort_by;
   const qDesc = Array.isArray(searchParams.descending) ? searchParams.descending[0] : searchParams.descending;
   const isDesc = qDesc === "true";
@@ -46,22 +46,15 @@ export async function CoolerRoiView({ searchParams }: { searchParams: Record<str
       key: "distributor",
       label: "Distributor",
       options: filters.distributors.map(d => ({ label: d, value: d }))
-    },
-    {
-      key: "greenfield",
-      label: "Greenfield",
-      options: [{ label: "Yes", value: "true" }, { label: "No", value: "false" }]
     }
+    // No greenfield filter — every outlet in the Top-100 already has a cooler
+    // (the list ranks the highest-NPV *additional* cooler, not greenfield sites).
   ];
 
   let filteredTop100 = top100.filter((r: any) => {
     if (search && !r.Outlet_ID?.toLowerCase().includes(search.toLowerCase())) return false;
     if (qType && r.Outlet_Type !== qType) return false;
     if (qDist && r.Distributor_ID !== qDist) return false;
-    if (qGreen) {
-      if (qGreen === "true" && !r.is_greenfield) return false;
-      if (qGreen === "false" && r.is_greenfield) return false;
-    }
     return true;
   });
 
@@ -123,6 +116,30 @@ export async function CoolerRoiView({ searchParams }: { searchParams: Record<str
           accent="success"
         />
       </section>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Top 10 outlets by 24-month NPV</CardTitle>
+          <CardDescription>
+            The highest-return cooler deployments — net present value over a
+            24-month horizon.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CoolerNpvBar
+            data={[...top100]
+              .sort(
+                (a: any, b: any) =>
+                  (b.npv_24mo_LKR ?? 0) - (a.npv_24mo_LKR ?? 0),
+              )
+              .slice(0, 10)
+              .map((r: any) => ({
+                name: r.Outlet_ID,
+                value: r.npv_24mo_LKR ?? 0,
+              }))}
+          />
+        </CardContent>
+      </Card>
 
       <InsightFilterBar filters={filterConfigs} />
 

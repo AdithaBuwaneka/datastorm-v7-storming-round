@@ -12,12 +12,26 @@ import { fmtLKR, fmtLitres, fmtNumber } from "@/lib/utils";
 import { KpiTile } from "@/components/kpi-tile";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import {
+  ProvinceBarChart,
+  DormancyDonut,
+  ChannelDonut,
+} from "@/components/dashboard-charts";
 
 export default async function DashboardPage() {
   let summary: Summary | null = null;
   let error: string | null = null;
+  let bands: Record<string, number> = {};
+  let channelTotals: Record<string, number> = {};
   try {
-    summary = (await api.summary()) as unknown as Summary;
+    const [s, b, ch] = await Promise.all([
+      api.summary() as unknown as Promise<Summary>,
+      api.dormancyBands().catch(() => ({})),
+      api.budgetByChannel().catch(() => ({ totals: {}, rows: [] })),
+    ]);
+    summary = s;
+    bands = b as Record<string, number>;
+    channelTotals = (ch as { totals: Record<string, number> }).totals || {};
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -107,19 +121,57 @@ export default async function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ul className="flex flex-col divide-y divide-border">
-              {Object.entries(summary.outlets_by_province).map(([prov, n]) => (
-                <li
-                  key={prov}
-                  className="flex items-center justify-between py-2"
-                >
-                  <span className="font-medium">{prov}</span>
-                  <span className="text-muted-foreground">
-                    {fmtNumber(n as number)} outlets
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <ProvinceBarChart
+              data={Object.entries(summary.outlets_by_province).map(
+                ([name, value]) => ({ name, value: value as number }),
+              )}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Dormancy risk distribution</CardTitle>
+            <CardDescription>
+              Outlets by predicted lapse-risk band (early-warning classifier).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DormancyDonut
+              data={[
+                { name: "Low", value: bands.low ?? 0 },
+                { name: "Moderate", value: bands.moderate ?? 0 },
+                { name: "High", value: bands.high ?? 0 },
+                { name: "Critical", value: bands.critical ?? 0 },
+              ].filter((d) => d.value > 0)}
+            />
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>LKR 5M trade-spend by channel</CardTitle>
+            <CardDescription>
+              Western Province allocation split across discount, merchandising
+              and promotional spend.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChannelDonut
+              data={[
+                { name: "Discount", value: channelTotals.Discount_LKR ?? 0 },
+                {
+                  name: "Merchandising",
+                  value: channelTotals.Merchandising_LKR ?? 0,
+                },
+                {
+                  name: "Promotional",
+                  value: channelTotals.Promotional_LKR ?? 0,
+                },
+              ].filter((d) => d.value > 0)}
+            />
           </CardContent>
         </Card>
 

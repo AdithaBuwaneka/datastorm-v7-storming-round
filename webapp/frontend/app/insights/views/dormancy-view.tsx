@@ -14,6 +14,7 @@ import { RiskBadge } from "@/components/risk-badge";
 import { Button } from "@/components/ui/button";
 import { PaginationBar, buildPageHref } from "@/components/pagination-bar";
 import { InsightFilterBar, SortableHeader, FilterConfig } from "../insight-filter-bar";
+import { DormancyDonut } from "@/components/dashboard-charts";
 
 const PAGE_SIZE = 20;
 
@@ -38,7 +39,6 @@ export async function DormancyView({ searchParams }: { searchParams: Record<stri
 
   const qProv = Array.isArray(searchParams.province) ? searchParams.province[0] : searchParams.province;
   const qDist = Array.isArray(searchParams.distributor) ? searchParams.distributor[0] : searchParams.distributor;
-  const qRisk = Array.isArray(searchParams.risk_band) ? searchParams.risk_band[0] : searchParams.risk_band;
   const qSort = Array.isArray(searchParams.sort_by) ? searchParams.sort_by[0] : searchParams.sort_by;
   const qDesc = Array.isArray(searchParams.descending) ? searchParams.descending[0] : searchParams.descending;
   const isDesc = qDesc === "true";
@@ -53,19 +53,15 @@ export async function DormancyView({ searchParams }: { searchParams: Record<stri
       key: "distributor",
       label: "Distributor",
       options: filters.distributors.map(d => ({ label: d, value: d }))
-    },
-    {
-      key: "risk_band",
-      label: "Risk band",
-      options: filters.risk_bands.map(r => ({ label: r, value: r }))
     }
+    // Note: no risk-band filter here — this list is the top-200 highest-risk
+    // shortlist, so every row is already in the critical band.
   ];
 
   let filteredTop = top.filter((r: any) => {
     if (search && !r.Outlet_ID?.toLowerCase().includes(search.toLowerCase())) return false;
     if (qProv && r.Province !== qProv) return false;
     if (qDist && r.Distributor_ID !== qDist) return false;
-    if (qRisk && r.risk_band !== qRisk) return false;
     return true;
   });
 
@@ -128,6 +124,25 @@ export async function DormancyView({ searchParams }: { searchParams: Record<stri
           accent="danger"
         />
       </section>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Risk band distribution</CardTitle>
+          <CardDescription>
+            Share of outlets in each predicted dormancy-risk band.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <DormancyDonut
+            data={[
+              { name: "Low", value: bands.low ?? 0 },
+              { name: "Moderate", value: bands.moderate ?? 0 },
+              { name: "High", value: bands.high ?? 0 },
+              { name: "Critical", value: bands.critical ?? 0 },
+            ].filter((d) => d.value > 0)}
+          />
+        </CardContent>
+      </Card>
 
       <InsightFilterBar filters={filterConfigs} />
 
